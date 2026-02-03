@@ -1,5 +1,15 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
+import dynamic from "next/dynamic";
+
+const ResortDetailMap = dynamic(() => import("@/components/ResortDetailMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-snow-900 flex items-center justify-center">
+      <div className="text-snow-400 text-sm">Loading map...</div>
+    </div>
+  ),
+});
 
 interface ResortPageProps {
   params: Promise<{ slug: string }>;
@@ -9,10 +19,18 @@ interface ResortPageProps {
 async function getResort(slug: string) {
   // TODO: Query from database
   // For skeleton, return mock data or null
-  const mockResorts: Record<string, { name: string; state: string; latitude: number; longitude: number }> = {
-    "vail": { name: "Vail", state: "Colorado", latitude: 39.6403, longitude: -106.3742 },
-    "mammoth-mountain": { name: "Mammoth Mountain", state: "California", latitude: 37.6308, longitude: -119.0326 },
-    "park-city": { name: "Park City", state: "Utah", latitude: 40.6514, longitude: -111.5080 },
+  const mockResorts: Record<
+    string,
+    { name: string; state: string; latitude: number; longitude: number }
+  > = {
+    vail: { name: "Vail", state: "Colorado", latitude: 39.6403, longitude: -106.3742 },
+    "mammoth-mountain": {
+      name: "Mammoth Mountain",
+      state: "California",
+      latitude: 37.6308,
+      longitude: -119.0326,
+    },
+    "park-city": { name: "Park City", state: "Utah", latitude: 40.6514, longitude: -111.508 },
   };
   return mockResorts[slug] || null;
 }
@@ -69,16 +87,15 @@ export default async function ResortPage({ params }: ResortPageProps) {
               <div className="px-4 py-3 border-b border-snow-700">
                 <h2 className="text-lg font-semibold text-ice-400">Resort Location</h2>
               </div>
-              <div className="aspect-video bg-snow-900 flex items-center justify-center">
-                <iframe
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${resort.longitude - 0.05}%2C${resort.latitude - 0.03}%2C${resort.longitude + 0.05}%2C${resort.latitude + 0.03}&layer=cyclemap&marker=${resort.latitude}%2C${resort.longitude}`}
-                  className="w-full h-full border-0"
-                  title={`Map of ${resort.name}`}
-                  loading="lazy"
+              <div className="aspect-video bg-snow-900">
+                <ResortDetailMap
+                  latitude={resort.latitude}
+                  longitude={resort.longitude}
+                  name={resort.name}
                 />
               </div>
               <div className="px-4 py-2 text-xs text-snow-500 border-t border-snow-700">
-                Map data: OpenStreetMap contributors
+                Map data: OpenStreetMap contributors | Radar: RainViewer
               </div>
             </section>
 
@@ -185,7 +202,8 @@ function StatPill({ label, value, unit }: { label: string; value: string; unit?:
     <div className="flex items-center gap-2 px-3 py-1.5 bg-snow-900/50 rounded-full border border-snow-700">
       <span className="text-xs text-snow-400">{label}</span>
       <span className="text-sm font-medium text-ice-300">
-        {value}{unit && <span className="text-snow-400 ml-0.5">{unit}</span>}
+        {value}
+        {unit && <span className="text-snow-400 ml-0.5">{unit}</span>}
       </span>
     </div>
   );
@@ -218,7 +236,8 @@ function OperationRow({ label, open, total }: { label: string; open: string; tot
     <div className="flex justify-between items-center">
       <span className="text-sm text-snow-400">{label}</span>
       <span className="text-sm font-medium text-ice-300">
-        {open}<span className="text-snow-500">/{total}</span>
+        {open}
+        <span className="text-snow-500">/{total}</span>
       </span>
     </div>
   );
