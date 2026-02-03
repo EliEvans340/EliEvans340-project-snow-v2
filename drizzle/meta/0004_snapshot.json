@@ -1,0 +1,949 @@
+{
+  "id": "308c76de-dd27-4aa3-afd0-369b733cb266",
+  "prevId": "5ff7c542-70b9-4d8e-a97b-e33e4bb986fa",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.resorts": {
+      "name": "resorts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "region": {
+          "name": "region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "website_url": {
+          "name": "website_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skiresortinfo_id": {
+          "name": "skiresortinfo_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "resorts_slug_unique": {
+          "name": "resorts_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.daily_forecasts": {
+      "name": "daily_forecasts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "forecast_date": {
+          "name": "forecast_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "high_temp_f": {
+          "name": "high_temp_f",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "low_temp_f": {
+          "name": "low_temp_f",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "snow_total_inches": {
+          "name": "snow_total_inches",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wind_avg_mph": {
+          "name": "wind_avg_mph",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conditions_summary": {
+          "name": "conditions_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "daily_forecasts_snapshot_id_forecast_snapshots_id_fk": {
+          "name": "daily_forecasts_snapshot_id_forecast_snapshots_id_fk",
+          "tableFrom": "daily_forecasts",
+          "tableTo": "forecast_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.forecast_snapshots": {
+      "name": "forecast_snapshots",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "resort_id": {
+          "name": "resort_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raw_data": {
+          "name": "raw_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "forecast_snapshots_resort_id_resorts_id_fk": {
+          "name": "forecast_snapshots_resort_id_resorts_id_fk",
+          "tableFrom": "forecast_snapshots",
+          "tableTo": "resorts",
+          "columnsFrom": [
+            "resort_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.hourly_forecasts": {
+      "name": "hourly_forecasts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "forecast_time": {
+          "name": "forecast_time",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "temp_f": {
+          "name": "temp_f",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feels_like_f": {
+          "name": "feels_like_f",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "snow_inches": {
+          "name": "snow_inches",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "precip_inches": {
+          "name": "precip_inches",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wind_mph": {
+          "name": "wind_mph",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gust_mph": {
+          "name": "gust_mph",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "humidity_pct": {
+          "name": "humidity_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conditions": {
+          "name": "conditions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "freezing_level_ft": {
+          "name": "freezing_level_ft",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "snow_level_ft": {
+          "name": "snow_level_ft",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "hourly_forecasts_snapshot_id_forecast_snapshots_id_fk": {
+          "name": "hourly_forecasts_snapshot_id_forecast_snapshots_id_fk",
+          "tableFrom": "hourly_forecasts",
+          "tableTo": "forecast_snapshots",
+          "columnsFrom": [
+            "snapshot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.accounts": {
+      "name": "accounts",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_account_id": {
+          "name": "provider_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_type": {
+          "name": "token_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_token": {
+          "name": "id_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "session_state": {
+          "name": "session_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "accounts_user_id_users_id_fk": {
+          "name": "accounts_user_id_users_id_fk",
+          "tableFrom": "accounts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "accounts_provider_provider_account_id_pk": {
+          "name": "accounts_provider_provider_account_id_pk",
+          "columns": [
+            "provider",
+            "provider_account_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "session_token": {
+          "name": "session_token",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires": {
+          "name": "expires",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sessions_user_id_users_id_fk": {
+          "name": "sessions_user_id_users_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.verification_tokens": {
+      "name": "verification_tokens",
+      "schema": "",
+      "columns": {
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires": {
+          "name": "expires",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "verification_tokens_identifier_token_pk": {
+          "name": "verification_tokens_identifier_token_pk",
+          "columns": [
+            "identifier",
+            "token"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.radar_frames": {
+      "name": "radar_frames",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "frame_time": {
+          "name": "frame_time",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tile_url": {
+          "name": "tile_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cached_at": {
+          "name": "cached_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "radar_frames_frame_time_unique": {
+          "name": "radar_frames_frame_time_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "frame_time"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.resort_conditions": {
+      "name": "resort_conditions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "resort_id": {
+          "name": "resort_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scraped_at": {
+          "name": "scraped_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "scraped_date": {
+          "name": "scraped_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snow_depth_summit": {
+          "name": "snow_depth_summit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "snow_depth_base": {
+          "name": "snow_depth_base",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_snow_24h": {
+          "name": "new_snow_24h",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_snow_48h": {
+          "name": "new_snow_48h",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_snow_7d": {
+          "name": "new_snow_7d",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lifts_open": {
+          "name": "lifts_open",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lifts_total": {
+          "name": "lifts_total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "runs_open": {
+          "name": "runs_open",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "runs_total": {
+          "name": "runs_total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_open_km": {
+          "name": "terrain_open_km",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_total_km": {
+          "name": "terrain_total_km",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_open_pct": {
+          "name": "terrain_open_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_open": {
+          "name": "is_open",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "season_start": {
+          "name": "season_start",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "season_end": {
+          "name": "season_end",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_snowfall": {
+          "name": "last_snowfall",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conditions": {
+          "name": "conditions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "resort_conditions_resort_id_resorts_id_fk": {
+          "name": "resort_conditions_resort_id_resorts_id_fk",
+          "tableFrom": "resort_conditions",
+          "tableTo": "resorts",
+          "columnsFrom": [
+            "resort_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.resort_info": {
+      "name": "resort_info",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "resort_id": {
+          "name": "resort_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "elevation_base": {
+          "name": "elevation_base",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "elevation_summit": {
+          "name": "elevation_summit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vertical_drop": {
+          "name": "vertical_drop",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_total_km": {
+          "name": "terrain_total_km",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_easy_km": {
+          "name": "terrain_easy_km",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_intermediate_km": {
+          "name": "terrain_intermediate_km",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_difficult_km": {
+          "name": "terrain_difficult_km",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_easy_pct": {
+          "name": "terrain_easy_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_intermediate_pct": {
+          "name": "terrain_intermediate_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "terrain_difficult_pct": {
+          "name": "terrain_difficult_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lifts_total": {
+          "name": "lifts_total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "runs_total": {
+          "name": "runs_total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "resort_info_resort_id_resorts_id_fk": {
+          "name": "resort_info_resort_id_resorts_id_fk",
+          "tableFrom": "resort_info",
+          "tableTo": "resorts",
+          "columnsFrom": [
+            "resort_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "resort_info_resort_id_unique": {
+          "name": "resort_info_resort_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "resort_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

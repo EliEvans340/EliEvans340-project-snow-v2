@@ -1,20 +1,67 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { eq, desc, and } from "drizzle-orm";
+import { getDb } from "@/db";
+import { resorts, resortConditions, resortInfo } from "@/db/schema";
+import { WeatherForecast } from "./weather-forecast";
 
 interface ResortPageProps {
   params: Promise<{ slug: string }>;
 }
 
-// Placeholder resort data - will be replaced with DB query
+// Convert cm to inches
+function cmToInches(cm: number | null): string {
+  if (cm === null) return "--";
+  return Math.round(cm / 2.54).toString();
+}
+
+// Convert meters to feet
+function metersToFeet(m: number | null): string {
+  if (m === null) return "--";
+  return Math.round(m * 3.281).toLocaleString();
+}
+
+// Convert km to miles
+function kmToMiles(km: number | null): string {
+  if (km === null) return "--";
+  return Math.round(parseFloat(km.toString()) * 0.621).toString();
+}
+
 async function getResort(slug: string) {
-  // TODO: Query from database
-  // For skeleton, return mock data or null
-  const mockResorts: Record<string, { name: string; state: string; latitude: number; longitude: number }> = {
-    "vail": { name: "Vail", state: "Colorado", latitude: 39.6403, longitude: -106.3742 },
-    "mammoth-mountain": { name: "Mammoth Mountain", state: "California", latitude: 37.6308, longitude: -119.0326 },
-    "park-city": { name: "Park City", state: "Utah", latitude: 40.6514, longitude: -111.5080 },
+  const db = getDb();
+  const [resort] = await db
+    .select()
+    .from(resorts)
+    .where(eq(resorts.slug, slug))
+    .limit(1);
+
+  if (!resort) return null;
+
+  // Get latest conditions
+  const [conditions] = await db
+    .select()
+    .from(resortConditions)
+    .where(eq(resortConditions.resortId, resort.id))
+    .orderBy(desc(resortConditions.scrapedAt))
+    .limit(1);
+
+  // Get static resort info
+  const [info] = await db
+    .select()
+    .from(resortInfo)
+    .where(eq(resortInfo.resortId, resort.id))
+    .limit(1);
+
+  return {
+    name: resort.name,
+    state: resort.state,
+    latitude: resort.latitude ? parseFloat(resort.latitude) : 0,
+    longitude: resort.longitude ? parseFloat(resort.longitude) : 0,
+    slug: resort.slug,
+    websiteUrl: resort.websiteUrl,
+    conditions: conditions || null,
+    info: info || null,
   };
-  return mockResorts[slug] || null;
 }
 
 export async function generateMetadata({ params }: ResortPageProps): Promise<Metadata> {
@@ -47,13 +94,36 @@ export default async function ResortPage({ params }: ResortPageProps) {
               <h1 className="text-4xl font-bold text-ice-400">{resort.name}</h1>
               <p className="text-lg text-snow-300 mt-1">{resort.state}</p>
             </div>
-            {/* Key Stats Strip - Placeholder */}
+            {/* Key Stats Strip */}
             <div className="flex flex-wrap gap-4">
-              <StatPill label="Base Depth" value="--" unit="in" />
-              <StatPill label="Summit Depth" value="--" unit="in" />
-              <StatPill label="Lifts Open" value="--" />
-              <StatPill label="Runs Open" value="--" />
-              <StatPill label="Forecast" value="--" />
+              <StatPill
+                label="Base Depth"
+                value={cmToInches(resort.conditions?.snowDepthBase ?? null)}
+                unit="in"
+              />
+              <StatPill
+                label="Summit Depth"
+                value={cmToInches(resort.conditions?.snowDepthSummit ?? null)}
+                unit="in"
+              />
+              <StatPill
+                label="Lifts Open"
+                value={resort.conditions?.liftsOpen !== null
+                  ? `${resort.conditions.liftsOpen}/${resort.conditions.liftsTotal ?? "?"}`
+                  : "--"
+                }
+              />
+              <StatPill
+                label="Terrain Open"
+                value={resort.conditions?.terrainOpenPct !== null
+                  ? `${resort.conditions.terrainOpenPct}%`
+                  : "--"
+                }
+              />
+              <StatPill
+                label="Status"
+                value={resort.conditions?.isOpen === 1 ? "Open" : resort.conditions?.isOpen === 0 ? "Closed" : "--"}
+              />
             </div>
           </div>
         </div>
@@ -113,33 +183,7 @@ export default async function ResortPage({ params }: ResortPageProps) {
           {/* Right Column */}
           <div className="flex flex-col gap-8">
             {/* Forecasting Section */}
-            <section className="bg-snow-800 rounded-lg border border-snow-700">
-              <div className="px-4 py-3 border-b border-snow-700">
-                <h2 className="text-lg font-semibold text-ice-400">Weather Forecast</h2>
-              </div>
-              {/* Tabs */}
-              <div className="flex border-b border-snow-700">
-                <button className="flex-1 px-4 py-2 text-sm font-medium text-ice-400 border-b-2 border-ice-400 bg-snow-800/50">
-                  Hourly
-                </button>
-                <button className="flex-1 px-4 py-2 text-sm font-medium text-snow-400 hover:text-snow-300 transition-colors">
-                  Daily
-                </button>
-              </div>
-              {/* Skeleton Loading State */}
-              <div className="p-4 space-y-3">
-                <ForecastSkeleton />
-                <ForecastSkeleton />
-                <ForecastSkeleton />
-                <ForecastSkeleton />
-                <div className="flex items-center justify-center py-2">
-                  <p className="text-sm text-snow-500">Forecast loading...</p>
-                </div>
-              </div>
-              <div className="px-4 py-2 text-xs text-snow-500 border-t border-snow-700">
-                Weather data: NOAA / Open-Meteo
-              </div>
-            </section>
+            <WeatherForecast slug={resort.slug} />
 
             {/* Snow & Operations Section */}
             <section className="bg-snow-800 rounded-lg border border-snow-700">
@@ -152,25 +196,72 @@ export default async function ResortPage({ params }: ResortPageProps) {
                   <div className="bg-snow-900/50 rounded-lg p-4">
                     <h3 className="text-sm font-medium text-snow-400 mb-3">Snow Depth</h3>
                     <div className="space-y-2">
-                      <DepthRow label="Base" value="--" />
-                      <DepthRow label="Summit" value="--" />
-                      <DepthRow label="24hr Snow" value="--" />
-                      <DepthRow label="48hr Snow" value="--" />
+                      <DepthRow
+                        label="Base"
+                        value={cmToInches(resort.conditions?.snowDepthBase ?? null)}
+                        unit="in"
+                      />
+                      <DepthRow
+                        label="Summit"
+                        value={cmToInches(resort.conditions?.snowDepthSummit ?? null)}
+                        unit="in"
+                      />
+                      <DepthRow
+                        label="24hr Snow"
+                        value={cmToInches(resort.conditions?.newSnow24h ?? null)}
+                        unit="in"
+                      />
+                      <DepthRow
+                        label="48hr Snow"
+                        value={cmToInches(resort.conditions?.newSnow48h ?? null)}
+                        unit="in"
+                      />
                     </div>
                   </div>
                   {/* Lifts & Runs */}
                   <div className="bg-snow-900/50 rounded-lg p-4">
-                    <h3 className="text-sm font-medium text-snow-400 mb-3">Lifts & Runs</h3>
+                    <h3 className="text-sm font-medium text-snow-400 mb-3">Lifts & Terrain</h3>
                     <div className="space-y-2">
-                      <OperationRow label="Lifts" open="--" total="--" />
-                      <OperationRow label="Runs" open="--" total="--" />
-                      <OperationRow label="Terrain" open="--" total="100%" />
+                      <OperationRow
+                        label="Lifts"
+                        open={resort.conditions?.liftsOpen?.toString() ?? "--"}
+                        total={resort.conditions?.liftsTotal?.toString() ?? resort.info?.liftsTotal?.toString() ?? "--"}
+                      />
+                      <OperationRow
+                        label="Terrain"
+                        open={resort.conditions?.terrainOpenKm ? kmToMiles(parseFloat(resort.conditions.terrainOpenKm)) : "--"}
+                        total={resort.conditions?.terrainTotalKm ? `${kmToMiles(parseFloat(resort.conditions.terrainTotalKm))} mi` : resort.info?.terrainTotalKm ? `${kmToMiles(parseFloat(resort.info.terrainTotalKm))} mi` : "--"}
+                      />
+                      <OperationRow
+                        label="% Open"
+                        open={resort.conditions?.terrainOpenPct?.toString() ?? "--"}
+                        total="100%"
+                      />
                     </div>
                   </div>
                 </div>
+
+                {/* Season Info */}
+                {(resort.conditions?.seasonStart || resort.conditions?.seasonEnd) && (
+                  <div className="mt-4 pt-4 border-t border-snow-700">
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-snow-400">Season:</span>
+                      <span className="text-snow-200">
+                        {resort.conditions.seasonStart && new Date(resort.conditions.seasonStart).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {" - "}
+                        {resort.conditions.seasonEnd && new Date(resort.conditions.seasonEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="px-4 py-2 text-xs text-snow-500 border-t border-snow-700">
                 Operations data: SkiResort.info
+                {resort.conditions?.scrapedAt && (
+                  <span className="ml-2">
+                    (Updated: {new Date(resort.conditions.scrapedAt).toLocaleDateString()})
+                  </span>
+                )}
               </div>
             </section>
           </div>
@@ -191,24 +282,13 @@ function StatPill({ label, value, unit }: { label: string; value: string; unit?:
   );
 }
 
-function ForecastSkeleton() {
-  return (
-    <div className="flex items-center gap-4 animate-pulse">
-      <div className="w-12 h-4 bg-snow-700 rounded" />
-      <div className="w-8 h-8 bg-snow-700 rounded" />
-      <div className="flex-1">
-        <div className="w-16 h-4 bg-snow-700 rounded mb-1" />
-        <div className="w-24 h-3 bg-snow-700 rounded" />
-      </div>
-    </div>
-  );
-}
-
-function DepthRow({ label, value }: { label: string; value: string }) {
+function DepthRow({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
     <div className="flex justify-between items-center">
       <span className="text-sm text-snow-400">{label}</span>
-      <span className="text-sm font-medium text-ice-300">{value}</span>
+      <span className="text-sm font-medium text-ice-300">
+        {value}{value !== "--" && unit && <span className="text-snow-400 ml-0.5">{unit}</span>}
+      </span>
     </div>
   );
 }
