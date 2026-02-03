@@ -15,6 +15,13 @@
       "when": 1770087406011,
       "tag": "0001_condemned_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770088354217,
+      "tag": "0002_white_runaways",
+      "breakpoints": true
     }
   ]
 }
