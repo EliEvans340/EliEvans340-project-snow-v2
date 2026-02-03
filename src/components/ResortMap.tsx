@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import "leaflet/dist/leaflet.css";
 
 interface Resort {
@@ -15,12 +16,20 @@ interface Resort {
   longitude: string | null;
 }
 
-// Custom marker icon
+// Custom marker icon (cyan for normal resorts)
 const markerIcon = new L.Icon({
   iconUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2338e8ff'%3E%3Cpath d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z'/%3E%3C/svg%3E",
   iconSize: [32, 32],
   iconAnchor: [16, 32],
   popupAnchor: [0, -32],
+});
+
+// Favorite marker icon (gold star marker for favorite resorts)
+const favoriteMarkerIcon = new L.Icon({
+  iconUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fbbf24'%3E%3Cpath d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z'/%3E%3Cpath fill='%23ffffff' d='M12 5.5l1.12 2.27.5.1 2.5.2-1.9 1.63-.16.5.58 2.44-2.14-1.31-.5-.03-.5.03-2.14 1.31.58-2.44-.16-.5-1.9-1.63 2.5-.2.5-.1L12 5.5z'/%3E%3C/svg%3E",
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
+  popupAnchor: [0, -36],
 });
 
 // Cluster icon
@@ -151,7 +160,9 @@ function getUniqueStates(resorts: Resort[]): string[] {
 }
 
 export default function ResortMap() {
+  const { data: session } = useSession();
   const [resorts, setResorts] = useState<Resort[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedState, setSelectedState] = useState<string>("");
@@ -172,6 +183,33 @@ export default function ResortMap() {
     }
     fetchResorts();
   }, []);
+
+  useEffect(() => {
+    async function fetchFavorites() {
+      if (!session) {
+        setFavoriteIds(new Set());
+        return;
+      }
+      try {
+        const response = await fetch("/api/favorites");
+        if (response.ok) {
+          const data = await response.json();
+          const ids = new Set<string>(
+            data.map((f: { resortId: string }) => f.resortId)
+          );
+          setFavoriteIds(ids);
+        }
+      } catch (error) {
+        console.error("Error fetching favorites:", error);
+      }
+    }
+    fetchFavorites();
+  }, [session]);
+
+  const isFavorite = useCallback(
+    (resortId: string) => favoriteIds.has(resortId),
+    [favoriteIds]
+  );
 
   const states = useMemo(() => getUniqueStates(resorts), [resorts]);
 
@@ -217,6 +255,7 @@ export default function ResortMap() {
           if (item.type === "marker") {
             const resort = item.resort;
             if (!resort.latitude || !resort.longitude) return null;
+            const isFav = isFavorite(resort.id);
             return (
               <Marker
                 key={resort.id}
@@ -224,13 +263,24 @@ export default function ResortMap() {
                   parseFloat(resort.latitude),
                   parseFloat(resort.longitude),
                 ]}
-                icon={markerIcon}
+                icon={isFav ? favoriteMarkerIcon : markerIcon}
+                zIndexOffset={isFav ? 1000 : 0}
               >
                 <Popup className="resort-popup">
                   <div className="p-2">
-                    <h3 className="font-bold text-lg text-snow-900">
-                      {resort.name}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-lg text-snow-900">
+                        {resort.name}
+                      </h3>
+                      {isFav && (
+                        <svg
+                          className="w-4 h-4 fill-amber-500"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                        </svg>
+                      )}
+                    </div>
                     <p className="text-snow-600">{resort.state}</p>
                     <Link
                       href={`/resort/${resort.slug}`}

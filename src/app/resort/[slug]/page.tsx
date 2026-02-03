@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
+import FavoriteButton from "@/components/FavoriteButton";
 
 interface ResortPageProps {
   params: Promise<{ slug: string }>;
@@ -43,9 +44,12 @@ export default async function ResortPage({ params }: ResortPageProps) {
       <header className="bg-snow-800 border-b border-snow-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col gap-4">
-            <div>
-              <h1 className="text-4xl font-bold text-ice-400">{resort.name}</h1>
-              <p className="text-lg text-snow-300 mt-1">{resort.state}</p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-4xl font-bold text-ice-400">{resort.name}</h1>
+                <p className="text-lg text-snow-300 mt-1">{resort.state}</p>
+              </div>
+              <FavoriteButton slug={slug} />
             </div>
             {/* Key Stats Strip - Placeholder */}
             <div className="flex flex-wrap gap-4">
