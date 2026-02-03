@@ -43,10 +43,51 @@ body {
   color: #0f172a !important;
 }
 
-/* Hide cluster marker default styles */
-.cluster-marker {
+/* Clean dot markers - no default leaflet styles */
+.dot-marker,
+.cluster-dot {
   background: none !important;
   border: none !important;
+}
+
+.dot-marker > div,
+.cluster-dot > div {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.dot-marker:hover > div,
+.cluster-dot:hover > div {
+  transform: scale(1.3);
+}
+
+/* Radar timeline slider */
+input[type="range"].accent-ice-500 {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #334155;
+  border-radius: 4px;
+}
+
+input[type="range"].accent-ice-500::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #38e8ff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(56, 232, 255, 0.5);
+}
+
+input[type="range"].accent-ice-500::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #38e8ff;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px rgba(56, 232, 255, 0.5);
 }
 
 /* Leaflet controls dark theme */

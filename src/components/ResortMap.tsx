@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import Link from "next/link";
@@ -15,36 +15,123 @@ interface Resort {
   longitude: string | null;
 }
 
-// Custom marker icon
-const markerIcon = new L.Icon({
-  iconUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2338e8ff'%3E%3Cpath d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z'/%3E%3C/svg%3E",
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32],
+// Simple dot marker for individual resorts
+const markerIcon = L.divIcon({
+  html: `<div style="
+    width: 10px;
+    height: 10px;
+    background: radial-gradient(circle, rgba(56, 232, 255, 1) 0%, rgba(56, 232, 255, 0.6) 50%, rgba(56, 232, 255, 0) 100%);
+    border-radius: 50%;
+    filter: blur(0.5px);
+  "></div>`,
+  className: "dot-marker",
+  iconSize: L.point(10, 10),
+  iconAnchor: L.point(5, 5),
+  popupAnchor: [0, -5],
 });
 
-// Cluster icon
+// Cluster dot - size scales with count, no numbers
 function createClusterIcon(count: number) {
-  const size = count < 10 ? 40 : count < 100 ? 50 : 60;
+  // Scale from 14px (2 resorts) to 28px (50+ resorts)
+  const minSize = 14;
+  const maxSize = 28;
+  const scale = Math.min(1, Math.log(count) / Math.log(50));
+  const size = Math.round(minSize + (maxSize - minSize) * scale);
+
   return L.divIcon({
     html: `<div style="
-      background: rgba(56, 232, 255, 0.9);
-      color: #0f172a;
       width: ${size}px;
       height: ${size}px;
+      background: radial-gradient(circle, rgba(56, 232, 255, 0.9) 0%, rgba(56, 232, 255, 0.5) 60%, rgba(56, 232, 255, 0) 100%);
       border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: ${size / 3}px;
-      border: 3px solid #0f172a;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    ">${count}</div>`,
-    className: "cluster-marker",
+      filter: blur(1px);
+    "></div>`,
+    className: "cluster-dot",
     iconSize: L.point(size, size),
     iconAnchor: L.point(size / 2, size / 2),
   });
+}
+
+// Simple radar controller - creates layers and manages visibility
+function RadarController({
+  enabled,
+  frames,
+  currentIndex,
+  opacity,
+  onLoadingChange,
+}: {
+  enabled: boolean;
+  frames: { time: number; url: string }[];
+  currentIndex: number;
+  opacity: number;
+  onLoadingChange?: (loading: boolean) => void;
+}) {
+  const map = useMap();
+  const layersRef = useRef<Map<string, L.TileLayer>>(new Map());
+  const loadedCountRef = useRef(0);
+  const totalFramesRef = useRef(0);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      layersRef.current.forEach((layer) => {
+        try { map.removeLayer(layer); } catch (e) { /* ignore */ }
+      });
+      layersRef.current.clear();
+    };
+  }, [map]);
+
+  // Create all layers when frames change
+  useEffect(() => {
+    if (frames.length === 0) return;
+
+    onLoadingChange?.(true);
+    loadedCountRef.current = 0;
+    totalFramesRef.current = frames.length;
+
+    // Create layers for all frames
+    frames.forEach((frame) => {
+      if (!layersRef.current.has(frame.url)) {
+        const layer = L.tileLayer(frame.url, {
+          opacity: 0,
+          zIndex: 100,
+        });
+
+        layer.on('load', () => {
+          loadedCountRef.current++;
+          if (loadedCountRef.current >= totalFramesRef.current) {
+            onLoadingChange?.(false);
+          }
+        });
+
+        layer.addTo(map);
+        layersRef.current.set(frame.url, layer);
+
+        // Trigger loading with tiny opacity
+        layer.setOpacity(0.01);
+
+        // Fallback: mark loaded after timeout
+        setTimeout(() => {
+          loadedCountRef.current++;
+          if (loadedCountRef.current >= totalFramesRef.current) {
+            onLoadingChange?.(false);
+          }
+        }, 5000);
+      }
+    });
+  }, [map, frames, onLoadingChange]);
+
+  // Update visibility based on current index
+  useEffect(() => {
+    const currentUrl = frames[currentIndex]?.url;
+
+    layersRef.current.forEach((layer, url) => {
+      const shouldShow = enabled && url === currentUrl;
+      layer.setOpacity(shouldShow ? opacity : 0);
+    });
+  }, [enabled, frames, currentIndex, opacity]);
+
+  return null;
 }
 
 // Map bounds handler for clustering
@@ -102,8 +189,12 @@ type ClusterOrMarker =
 function clusterResorts(resorts: Resort[], zoom: number): ClusterOrMarker[] {
   if (resorts.length === 0) return [];
 
-  // Grid-based clustering
-  const gridSize = Math.pow(2, 10 - Math.min(zoom, 10));
+  // Grid-based clustering - fine granularity for more dots
+  // At zoom 4: ~1.5 degree cells (many regional dots)
+  // At zoom 5: ~0.75 degree cells
+  // At zoom 6: ~0.4 degree cells
+  // At zoom 7: ~0.2 degree cells
+  const gridSize = 1.5 / Math.pow(2, Math.max(0, zoom - 4));
   const clusters: Map<string, Resort[]> = new Map();
 
   resorts.forEach((resort) => {
@@ -156,6 +247,12 @@ export default function ResortMap() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedState, setSelectedState] = useState<string>("");
   const [clusters, setClusters] = useState<ClusterOrMarker[]>([]);
+  const [radarEnabled, setRadarEnabled] = useState(true);
+  const [radarFrames, setRadarFrames] = useState<{ time: number; url: string }[]>([]);
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [radarLoading, setRadarLoading] = useState(true);
+  const [radarError, setRadarError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchResorts() {
@@ -172,6 +269,54 @@ export default function ResortMap() {
     }
     fetchResorts();
   }, []);
+
+  // Fetch radar frames from our cached API (builds up 24-hour history over time)
+  useEffect(() => {
+    async function fetchRadarFrames() {
+      try {
+        const response = await fetch("/api/radar");
+        const data = await response.json();
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        const frames: { time: number; url: string }[] = data.frames || [];
+
+        if (frames.length === 0) {
+          setRadarError("No radar data available yet");
+          return;
+        }
+
+        setRadarFrames(frames);
+        // Start at the most recent frame (now)
+        setCurrentFrameIndex(frames.length - 1);
+        setRadarError(null);
+      } catch (error) {
+        console.error("Error fetching radar data:", error);
+        setRadarError("Failed to load radar data");
+      }
+    }
+
+    fetchRadarFrames();
+    // Refresh radar data every 5 minutes (caches new frames each time)
+    const interval = setInterval(fetchRadarFrames, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Animation loop - only runs after all frames are loaded
+  useEffect(() => {
+    if (!isPlaying || radarFrames.length === 0 || radarLoading) return;
+
+    const interval = setInterval(() => {
+      setCurrentFrameIndex((prev) => (prev + 1) % radarFrames.length);
+    }, 500); // Change frame every 500ms
+
+    return () => clearInterval(interval);
+  }, [isPlaying, radarFrames.length, radarLoading]);
+
+  const currentFrame = radarFrames[currentFrameIndex];
+  const currentTime = currentFrame ? new Date(currentFrame.time * 1000) : null;
 
   const states = useMemo(() => getUniqueStates(resorts), [resorts]);
 
@@ -208,6 +353,14 @@ export default function ResortMap() {
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        />
+        {/* Weather Radar Controller - always mounted, handles visibility internally */}
+        <RadarController
+          enabled={radarEnabled}
+          frames={radarFrames}
+          currentIndex={currentFrameIndex}
+          opacity={0.7}
+          onLoadingChange={setRadarLoading}
         />
         <MapBoundsHandler
           resorts={filteredResorts}
@@ -278,6 +431,101 @@ export default function ResortMap() {
           }
         })}
       </MapContainer>
+
+      {/* Radar Controls */}
+      <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2">
+        {/* Radar Toggle */}
+        <button
+          onClick={() => setRadarEnabled(!radarEnabled)}
+          className={`px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 ${
+            radarEnabled
+              ? "bg-ice-500/20 border-ice-500 text-ice-400"
+              : "bg-snow-800/90 border-snow-600 text-snow-400"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          Radar
+        </button>
+
+        {/* Radar Timeline Controls */}
+        {radarEnabled && radarFrames.length > 0 && (
+          <div className="bg-snow-800/95 backdrop-blur border border-snow-700 rounded-lg p-3 min-w-[280px]">
+            {/* Loading indicator */}
+            {radarLoading && (
+              <div className="text-center mb-2 text-snow-400 text-xs flex items-center justify-center gap-2">
+                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Loading radar...
+              </div>
+            )}
+            {/* Error indicator */}
+            {radarError && (
+              <div className="text-center mb-2 text-red-400 text-xs">
+                {radarError}
+              </div>
+            )}
+            {/* Timestamp Display */}
+            <div className="text-center mb-2">
+              <span className="text-ice-400 text-sm font-medium">
+                {currentTime?.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              </span>
+              <span className="text-snow-500 text-xs ml-2">
+                {currentTime?.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+              </span>
+              {currentFrameIndex === radarFrames.length - 1 && (
+                <span className="text-green-400 text-xs ml-2">(now)</span>
+              )}
+            </div>
+
+            {/* Timeline Slider */}
+            <div className="flex items-center gap-2">
+              {/* Play/Pause Button */}
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="p-1.5 rounded bg-snow-700 hover:bg-snow-600 text-snow-200 transition-colors"
+              >
+                {isPlaying ? (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Slider */}
+              <input
+                type="range"
+                min={0}
+                max={radarFrames.length - 1}
+                value={currentFrameIndex}
+                onChange={(e) => {
+                  setCurrentFrameIndex(parseInt(e.target.value));
+                  setIsPlaying(false);
+                }}
+                className="flex-1 h-2 bg-snow-700 rounded-lg appearance-none cursor-pointer accent-ice-500"
+              />
+            </div>
+
+            {/* Time labels */}
+            <div className="flex justify-between mt-1 text-xs text-snow-500">
+              <span>
+                {radarFrames[0] && (() => {
+                  const hoursAgo = Math.round((Date.now() / 1000 - radarFrames[0].time) / 3600);
+                  return hoursAgo >= 1 ? `${hoursAgo}h ago` : "now";
+                })()}
+              </span>
+              <span>now</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Search and Filter Dock */}
       <div className="absolute bottom-0 left-0 right-0 bg-snow-900/95 backdrop-blur border-t border-snow-700 p-4 z-[1000]">
