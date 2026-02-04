@@ -2,7 +2,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { getDb } from "@/db";
 import { resorts, resortConditions } from "@/db/schema";
-import { desc, isNotNull, gt, inArray, eq } from "drizzle-orm";
+import { desc, isNotNull, gt, inArray, eq, sql } from "drizzle-orm";
 import { neon } from "@neondatabase/serverless";
 
 const ResortMap = dynamic(() => import("@/components/ResortMap"), {
@@ -27,7 +27,7 @@ async function getFreshSnowResorts() {
         snowDepthSummit: resortConditions.snowDepthSummit,
       })
       .from(resortConditions)
-      .innerJoin(resorts, (fields, ops) => ops.eq(resortConditions.resortId, resorts.id))
+      .innerJoin(resorts, eq(resortConditions.resortId, resorts.id))
       .where(gt(resortConditions.newSnow24h, 0))
       .orderBy(desc(resortConditions.newSnow24h))
       .limit(5);
@@ -49,7 +49,7 @@ async function getDeepestSnowResorts() {
         snowDepthSummit: resortConditions.snowDepthSummit,
       })
       .from(resortConditions)
-      .innerJoin(resorts, (fields, ops) => ops.eq(resortConditions.resortId, resorts.id))
+      .innerJoin(resorts, eq(resortConditions.resortId, resorts.id))
       .where(isNotNull(resortConditions.snowDepthSummit))
       .orderBy(desc(resortConditions.snowDepthSummit))
       .limit(5);
