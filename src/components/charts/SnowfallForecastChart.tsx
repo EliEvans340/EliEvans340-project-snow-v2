@@ -9,7 +9,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
@@ -164,7 +163,7 @@ function CustomTooltip({
               {entry.dataKey === "historical" ? "Actual" : entry.dataKey.toUpperCase()}:
             </span>
             <span className="text-snow-100 font-medium">
-              {entry.value.toFixed(1)}"
+              {entry.value.toFixed(1)}&quot;
             </span>
           </div>
         );

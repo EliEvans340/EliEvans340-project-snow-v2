@@ -181,7 +181,7 @@ export function HourlyForecast({ slug }: WeatherForecastProps) {
 }
 
 // Keep the old export name for backwards compatibility
-export { HourlyForecast as WeatherForecast };
+export const WeatherForecast = HourlyForecast;
 
 function LoadingSkeleton() {
   return (

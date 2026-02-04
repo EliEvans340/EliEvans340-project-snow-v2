@@ -277,7 +277,7 @@ const slugToSkiResortInfoId: Record<string, string> = {
   "roundtop": "roundtop-mountain-resort",
   "whitetail": "whitetail-resort",
   "bear-creek": "bear-creek-mountain-resort",
-  "hidden-valley": "hidden-valley-pa",
+  "hidden-valley-pa": "hidden-valley-pa",
   "laurel-mountain": "laurel-mountain",
   "tussey-mountain": "tussey-mountain",
   "spring-mountain": "spring-mountain-adventures",
@@ -290,7 +290,7 @@ const slugToSkiResortInfoId: Record<string, string> = {
   // West Virginia
   "snowshoe": "snowshoe-mountain",
   "canaan-valley": "canaan-valley-resort",
-  "timberline": "timberline-mountain",
+  "timberline-wv": "timberline-mountain",
   "winterplace": "winterplace-ski-resort",
   "oglebay": "oglebay-resort",
   "alpine-lake": "alpine-lake-resort",
@@ -299,7 +299,7 @@ const slugToSkiResortInfoId: Record<string, string> = {
   "boyne-mountain": "boyne-mountain",
   "boyne-highlands": "boyne-highlands",
   "nubs-nob": "nubs-nob",
-  "crystal-mountain": "crystal-mountain-michigan",
+  "crystal-mountain-mi": "crystal-mountain-michigan",
   "shanty-creek": "shanty-creek",
   "caberfae-peaks": "caberfae-peaks",
   "big-powderhorn": "big-powderhorn-mountain",
@@ -365,7 +365,7 @@ const slugToSkiResortInfoId: Record<string, string> = {
   // Oregon
   "mt-bachelor": "mt-bachelor",
   "mt-hood-meadows": "mt-hood-meadows",
-  "timberline": "timberline-lodge",
+  "timberline-or": "timberline-lodge",
   "mt-hood-skibowl": "mt-hood-skibowl",
   "mt-ashland": "mt-ashland",
   "hoodoo": "hoodoo-ski-area",
@@ -376,7 +376,7 @@ const slugToSkiResortInfoId: Record<string, string> = {
   "ferguson-ridge": "ferguson-ridge",
 
   // Washington
-  "crystal-mountain": "crystal-mountain",
+  "crystal-mountain-wa": "crystal-mountain",
   "stevens-pass": "stevens-pass",
   "the-summit-at-snoqualmie": "the-summit-at-snoqualmie",
   "mt-baker": "mt-baker",
@@ -438,7 +438,7 @@ const slugToSkiResortInfoId: Record<string, string> = {
   "sleepy-hollow": "sleepy-hollow-iowa",
 
   // Missouri
-  "hidden-valley": "hidden-valley-missouri",
+  "hidden-valley-mo": "hidden-valley-missouri",
   "snow-creek": "snow-creek",
 };
 
