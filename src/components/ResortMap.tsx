@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import Link from "next/link";
@@ -13,6 +13,17 @@ interface Resort {
   state: string;
   latitude: string | null;
   longitude: string | null;
+  terrainOpenPct: number | null;
+  newSnow24h: number | null;
+  snowDepthSummit: number | null;
+  isOpen: number | null;
+  conditions: string | null;
+}
+
+// Convert cm to inches
+function cmToInches(cm: number | null): string {
+  if (cm === null || cm === undefined) return "--";
+  return Math.round(cm / 2.54).toString();
 }
 
 // Most popular US ski resorts (highlighted in purple)
@@ -56,16 +67,14 @@ const popularMarkerIcon = L.divIcon({
   popupAnchor: [0, -6],
 });
 
-// Cluster dot - size scales with count, no numbers
-// If hasPopular is true, use purple color
+// Cluster dot - size scales with count
 function createClusterIcon(count: number, hasPopular: boolean = false) {
-  // Scale from 14px (2 resorts) to 28px (50+ resorts)
   const minSize = 14;
   const maxSize = 28;
   const scale = Math.min(1, Math.log(count) / Math.log(50));
   const size = Math.round(minSize + (maxSize - minSize) * scale);
 
-  const color = hasPopular ? "168, 85, 247" : "56, 232, 255"; // purple or ice blue
+  const color = hasPopular ? "168, 85, 247" : "56, 232, 255";
 
   return L.divIcon({
     html: `<div style="
@@ -81,94 +90,33 @@ function createClusterIcon(count: number, hasPopular: boolean = false) {
   });
 }
 
-// Simple radar controller - creates layers and manages visibility
-function RadarController({
+// Static radar layer - shows single frame
+function StaticRadarLayer({
   enabled,
-  frames,
-  currentIndex,
+  url,
   opacity,
-  onLoadingChange,
 }: {
   enabled: boolean;
-  frames: { time: number; url: string }[];
-  currentIndex: number;
+  url: string | null;
   opacity: number;
-  onLoadingChange?: (loading: boolean) => void;
 }) {
   const map = useMap();
-  const layersRef = useRef<Map<string, L.TileLayer>>(new Map());
-  const loadedCountRef = useRef(0);
-  const totalFramesRef = useRef(0);
 
-  // Cleanup on unmount
   useEffect(() => {
+    if (!url || !enabled) return;
+
+    const layer = L.tileLayer(url, {
+      opacity,
+      zIndex: 100,
+    });
+
+    layer.addTo(map);
+
     return () => {
-      layersRef.current.forEach((layer) => {
-        try { map.removeLayer(layer); } catch (e) { /* ignore */ }
-      });
-      layersRef.current.clear();
+      map.removeLayer(layer);
     };
-  }, [map]);
+  }, [map, url, enabled, opacity]);
 
-  // Create all layers when frames change
-  useEffect(() => {
-    if (frames.length === 0) return;
-
-    onLoadingChange?.(true);
-    loadedCountRef.current = 0;
-    totalFramesRef.current = frames.length;
-
-    // Create layers for all frames
-    frames.forEach((frame) => {
-      if (!layersRef.current.has(frame.url)) {
-        const layer = L.tileLayer(frame.url, {
-          opacity: 0,
-          zIndex: 100,
-        });
-
-        layer.on('load', () => {
-          loadedCountRef.current++;
-          if (loadedCountRef.current >= totalFramesRef.current) {
-            onLoadingChange?.(false);
-          }
-        });
-
-        layer.addTo(map);
-        layersRef.current.set(frame.url, layer);
-
-        // Trigger loading with tiny opacity
-        layer.setOpacity(0.01);
-
-        // Fallback: mark loaded after timeout
-        setTimeout(() => {
-          loadedCountRef.current++;
-          if (loadedCountRef.current >= totalFramesRef.current) {
-            onLoadingChange?.(false);
-          }
-        }, 5000);
-      }
-    });
-  }, [map, frames, onLoadingChange]);
-
-  // Update visibility based on current index
-  useEffect(() => {
-    const currentUrl = frames[currentIndex]?.url;
-
-    layersRef.current.forEach((layer, url) => {
-      const shouldShow = enabled && url === currentUrl;
-      layer.setOpacity(shouldShow ? opacity : 0);
-    });
-  }, [enabled, frames, currentIndex, opacity]);
-
-  return null;
-}
-
-// Signals when map is ready
-function MapReadyHandler({ onReady }: { onReady: () => void }) {
-  const map = useMap();
-  useEffect(() => {
-    onReady();
-  }, [map, onReady]);
   return null;
 }
 
@@ -194,14 +142,11 @@ function MapBoundsHandler({
         return bounds.contains([lat, lng]);
       });
 
-      // Cluster logic based on zoom level
       if (zoom >= 8) {
-        // Show individual markers at high zoom
         onVisibleResortsChange(
           visibleResorts.map((r) => ({ type: "marker" as const, resort: r }))
         );
       } else {
-        // Cluster markers at low zoom
         const clusters = clusterResorts(visibleResorts, zoom);
         onVisibleResortsChange(clusters);
       }
@@ -227,11 +172,6 @@ type ClusterOrMarker =
 function clusterResorts(resorts: Resort[], zoom: number): ClusterOrMarker[] {
   if (resorts.length === 0) return [];
 
-  // Grid-based clustering - fine granularity for more dots
-  // At zoom 4: ~1.5 degree cells (many regional dots)
-  // At zoom 5: ~0.75 degree cells
-  // At zoom 6: ~0.4 degree cells
-  // At zoom 7: ~0.2 degree cells
   const gridSize = 1.5 / Math.pow(2, Math.max(0, zoom - 4));
   const clusters: Map<string, Resort[]> = new Map();
 
@@ -254,9 +194,7 @@ function clusterResorts(resorts: Resort[], zoom: number): ClusterOrMarker[] {
     if (clusterResorts.length === 1) {
       result.push({ type: "marker", resort: clusterResorts[0] });
     } else {
-      // Calculate center of cluster
-      let sumLat = 0,
-        sumLng = 0;
+      let sumLat = 0, sumLng = 0;
       clusterResorts.forEach((r) => {
         sumLat += parseFloat(r.latitude!);
         sumLng += parseFloat(r.longitude!);
@@ -273,10 +211,42 @@ function clusterResorts(resorts: Resort[], zoom: number): ClusterOrMarker[] {
   return result;
 }
 
-// Get unique states from resorts
 function getUniqueStates(resorts: Resort[]): string[] {
   const states = new Set(resorts.map((r) => r.state));
   return Array.from(states).sort();
+}
+
+// Cluster marker that zooms in on click
+function ClusterMarker({
+  position,
+  resorts,
+  hasPopular,
+}: {
+  position: [number, number];
+  resorts: Resort[];
+  hasPopular: boolean;
+}) {
+  const map = useMap();
+
+  const handleClick = useCallback(() => {
+    // Calculate bounds that contain all resorts in the cluster
+    const lats = resorts.map((r) => parseFloat(r.latitude!));
+    const lngs = resorts.map((r) => parseFloat(r.longitude!));
+    const bounds = L.latLngBounds(
+      [Math.min(...lats), Math.min(...lngs)],
+      [Math.max(...lats), Math.max(...lngs)]
+    );
+    // Zoom to fit the cluster with some padding
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 });
+  }, [map, resorts]);
+
+  return (
+    <Marker
+      position={position}
+      icon={createClusterIcon(resorts.length, hasPopular)}
+      eventHandlers={{ click: handleClick }}
+    />
+  );
 }
 
 export default function ResortMap() {
@@ -286,14 +256,10 @@ export default function ResortMap() {
   const [selectedState, setSelectedState] = useState<string>("");
   const [clusters, setClusters] = useState<ClusterOrMarker[]>([]);
   const [radarEnabled, setRadarEnabled] = useState(true);
-  const [radarFrames, setRadarFrames] = useState<{ time: number; url: string }[]>([]);
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [radarLoading, setRadarLoading] = useState(true);
-  const [radarError, setRadarError] = useState<string | null>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const [radarUrl, setRadarUrl] = useState<string | null>(null);
+  const [radarTime, setRadarTime] = useState<Date | null>(null);
 
-  // Fetch resorts - don't block initial render
+  // Fetch resorts
   useEffect(() => {
     async function fetchResorts() {
       try {
@@ -310,57 +276,28 @@ export default function ResortMap() {
     fetchResorts();
   }, []);
 
-  // Fetch radar frames AFTER map is ready (lazy load)
+  // Fetch latest radar frame
   useEffect(() => {
-    if (!mapReady) return;
-
-    async function fetchRadarFrames() {
+    async function fetchRadar() {
       try {
         const response = await fetch("/api/radar");
         const data = await response.json();
 
-        if (data.error) {
-          throw new Error(data.error);
-        }
+        if (data.error || !data.frames?.length) return;
 
-        const frames: { time: number; url: string }[] = data.frames || [];
-
-        if (frames.length === 0) {
-          setRadarError("No radar data available yet");
-          return;
-        }
-
-        setRadarFrames(frames);
-        setCurrentFrameIndex(frames.length - 1);
-        setRadarError(null);
+        // Get the latest frame
+        const latestFrame = data.frames[data.frames.length - 1];
+        setRadarUrl(latestFrame.url);
+        setRadarTime(new Date(latestFrame.time * 1000));
       } catch (error) {
-        console.error("Error fetching radar data:", error);
-        setRadarError("Failed to load radar data");
+        console.error("Error fetching radar:", error);
       }
     }
 
-    // Small delay to let map render first
-    const timeout = setTimeout(fetchRadarFrames, 100);
-    const interval = setInterval(fetchRadarFrames, 5 * 60 * 1000);
-    return () => {
-      clearTimeout(timeout);
-      clearInterval(interval);
-    };
-  }, [mapReady]);
-
-  // Animation loop - only runs after all frames are loaded
-  useEffect(() => {
-    if (!isPlaying || radarFrames.length === 0 || radarLoading) return;
-
-    const interval = setInterval(() => {
-      setCurrentFrameIndex((prev) => (prev + 1) % radarFrames.length);
-    }, 500); // Change frame every 500ms
-
+    fetchRadar();
+    const interval = setInterval(fetchRadar, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [isPlaying, radarFrames.length, radarLoading]);
-
-  const currentFrame = radarFrames[currentFrameIndex];
-  const currentTime = currentFrame ? new Date(currentFrame.time * 1000) : null;
+  }, []);
 
   const states = useMemo(() => getUniqueStates(resorts), [resorts]);
 
@@ -375,7 +312,6 @@ export default function ResortMap() {
     });
   }, [resorts, searchQuery, selectedState]);
 
-  // US center coordinates
   const center: [number, number] = [39.8283, -98.5795];
 
   return (
@@ -386,28 +322,25 @@ export default function ResortMap() {
         className="h-full w-full"
         style={{ background: "#0f172a" }}
       >
-        <MapReadyHandler onReady={() => setMapReady(true)} />
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
-        {/* Weather Radar Controller - only load after map ready */}
-        {mapReady && (
-          <RadarController
-            enabled={radarEnabled}
-            frames={radarFrames}
-            currentIndex={currentFrameIndex}
-            opacity={0.7}
-            onLoadingChange={setRadarLoading}
-          />
-        )}
-        {/* Only render markers after resorts loaded */}
+
+        {/* Static Radar Layer */}
+        <StaticRadarLayer
+          enabled={radarEnabled}
+          url={radarUrl}
+          opacity={0.7}
+        />
+
         {!resortsLoading && (
           <MapBoundsHandler
             resorts={filteredResorts}
             onVisibleResortsChange={setClusters}
           />
         )}
+
         {clusters.map((item, index) => {
           if (item.type === "marker") {
             const resort = item.resort;
@@ -423,14 +356,42 @@ export default function ResortMap() {
                 icon={isPopular ? popularMarkerIcon : markerIcon}
               >
                 <Popup className="resort-popup">
-                  <div className="p-2">
+                  <div className="p-2 min-w-[180px]">
                     <h3 className="font-bold text-lg text-snow-900">
                       {resort.name}
                     </h3>
-                    <p className="text-snow-600">{resort.state}</p>
+                    <p className="text-snow-600 text-sm">{resort.state}</p>
+
+                    {/* Conditions info */}
+                    <div className="mt-2 space-y-1 text-sm">
+                      {resort.isOpen !== null && (
+                        <div className="flex items-center gap-1">
+                          <span className={resort.isOpen ? "text-green-600" : "text-red-500"}>
+                            {resort.isOpen ? "● Open" : "● Closed"}
+                          </span>
+                          {resort.terrainOpenPct !== null && resort.isOpen === 1 && (
+                            <span className="text-snow-500">({resort.terrainOpenPct}% terrain)</span>
+                          )}
+                        </div>
+                      )}
+                      {resort.snowDepthSummit !== null && (
+                        <div className="text-snow-700">
+                          Base: {cmToInches(resort.snowDepthSummit)}&quot; at summit
+                        </div>
+                      )}
+                      {resort.newSnow24h !== null && resort.newSnow24h > 0 && (
+                        <div className="text-ice-600 font-medium">
+                          +{cmToInches(resort.newSnow24h)}&quot; new snow
+                        </div>
+                      )}
+                      {resort.conditions && (
+                        <div className="text-snow-500 italic">{resort.conditions}</div>
+                      )}
+                    </div>
+
                     <Link
                       href={`/resort/${resort.slug}`}
-                      className="inline-block mt-2 px-3 py-1 bg-ice-600 text-white rounded hover:bg-ice-700 transition-colors text-sm"
+                      className="inline-block mt-3 px-3 py-1 bg-ice-600 text-white rounded hover:bg-ice-700 transition-colors text-sm"
                     >
                       View details
                     </Link>
@@ -441,44 +402,19 @@ export default function ResortMap() {
           } else {
             const hasPopular = item.resorts.some((r) => POPULAR_RESORTS.has(r.slug));
             return (
-              <Marker
+              <ClusterMarker
                 key={`cluster-${index}`}
                 position={[item.lat, item.lng]}
-                icon={createClusterIcon(item.resorts.length, hasPopular)}
-              >
-                <Popup>
-                  <div className="p-2 max-h-48 overflow-y-auto">
-                    <h3 className="font-bold text-snow-900 mb-2">
-                      {item.resorts.length} resorts
-                    </h3>
-                    <ul className="space-y-1">
-                      {item.resorts.slice(0, 10).map((r) => (
-                        <li key={r.id}>
-                          <Link
-                            href={`/resort/${r.slug}`}
-                            className="text-ice-600 hover:text-ice-700 text-sm"
-                          >
-                            {r.name}
-                          </Link>
-                        </li>
-                      ))}
-                      {item.resorts.length > 10 && (
-                        <li className="text-snow-500 text-sm">
-                          +{item.resorts.length - 10} more
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                </Popup>
-              </Marker>
+                resorts={item.resorts}
+                hasPopular={hasPopular}
+              />
             );
           }
         })}
       </MapContainer>
 
-      {/* Radar Controls */}
-      <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2">
-        {/* Radar Toggle */}
+      {/* Radar Toggle */}
+      <div className="absolute top-4 right-4 z-[1000]">
         <button
           onClick={() => setRadarEnabled(!radarEnabled)}
           className={`px-3 py-2 rounded-lg border transition-colors flex items-center gap-2 ${
@@ -491,84 +427,12 @@ export default function ResortMap() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
           Radar
+          {radarTime && radarEnabled && (
+            <span className="text-xs text-snow-400">
+              {radarTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+          )}
         </button>
-
-        {/* Radar Timeline Controls */}
-        {radarEnabled && radarFrames.length > 0 && (
-          <div className="bg-snow-800/95 backdrop-blur border border-snow-700 rounded-lg p-3 min-w-[280px]">
-            {/* Loading indicator */}
-            {radarLoading && (
-              <div className="text-center mb-2 text-snow-400 text-xs flex items-center justify-center gap-2">
-                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Loading radar...
-              </div>
-            )}
-            {/* Error indicator */}
-            {radarError && (
-              <div className="text-center mb-2 text-red-400 text-xs">
-                {radarError}
-              </div>
-            )}
-            {/* Timestamp Display */}
-            <div className="text-center mb-2">
-              <span className="text-ice-400 text-sm font-medium">
-                {currentTime?.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-              </span>
-              <span className="text-snow-500 text-xs ml-2">
-                {currentTime?.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
-              </span>
-              {currentFrameIndex === radarFrames.length - 1 && (
-                <span className="text-green-400 text-xs ml-2">(now)</span>
-              )}
-            </div>
-
-            {/* Timeline Slider */}
-            <div className="flex items-center gap-2">
-              {/* Play/Pause Button */}
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="p-1.5 rounded bg-snow-700 hover:bg-snow-600 text-snow-200 transition-colors"
-              >
-                {isPlaying ? (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
-              </button>
-
-              {/* Slider */}
-              <input
-                type="range"
-                min={0}
-                max={radarFrames.length - 1}
-                value={currentFrameIndex}
-                onChange={(e) => {
-                  setCurrentFrameIndex(parseInt(e.target.value));
-                  setIsPlaying(false);
-                }}
-                className="flex-1 h-2 bg-snow-700 rounded-lg appearance-none cursor-pointer accent-ice-500"
-              />
-            </div>
-
-            {/* Time labels */}
-            <div className="flex justify-between mt-1 text-xs text-snow-500">
-              <span>
-                {radarFrames[0] && (() => {
-                  const hoursAgo = Math.round((Date.now() / 1000 - radarFrames[0].time) / 3600);
-                  return hoursAgo >= 1 ? `${hoursAgo}h ago` : "now";
-                })()}
-              </span>
-              <span>now</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Search and Filter Dock */}

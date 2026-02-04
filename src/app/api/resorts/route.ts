@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 
-export const dynamic = "force-dynamic";
+// Revalidate every 1 hour - resort data rarely changes
+export const revalidate = 3600;
 
 export async function GET() {
   if (!process.env.DATABASE_URL) {
@@ -14,14 +15,32 @@ export async function GET() {
   try {
     const sql = neon(process.env.DATABASE_URL);
 
-    // Use raw SQL to avoid any ORM limits
+    // Fetch resorts with latest conditions data
     const allResorts = await sql`
-      SELECT id, name, slug, state, latitude, longitude, skiresortinfo_id as "skiresortinfoId"
-      FROM resorts
-      ORDER BY name
+      SELECT
+        r.id, r.name, r.slug, r.state, r.latitude, r.longitude,
+        c.terrain_open_pct as "terrainOpenPct",
+        c.new_snow_24h as "newSnow24h",
+        c.snow_depth_summit as "snowDepthSummit",
+        c.is_open as "isOpen",
+        c.conditions
+      FROM resorts r
+      LEFT JOIN LATERAL (
+        SELECT * FROM resort_conditions
+        WHERE resort_id = r.id
+        ORDER BY scraped_at DESC
+        LIMIT 1
+      ) c ON true
+      WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
+      ORDER BY r.name
     `;
 
-    return NextResponse.json(allResorts);
+    // Add cache headers for CDN/browser caching
+    return NextResponse.json(allResorts, {
+      headers: {
+        "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+      },
+    });
   } catch (error) {
     console.error("Failed to fetch resorts:", error);
     return NextResponse.json(

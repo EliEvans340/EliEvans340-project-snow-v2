@@ -44,6 +44,10 @@ export const resortConditions = pgTable("resort_conditions", {
   // Additional info
   lastSnowfall: date("last_snowfall"),
   conditions: text("conditions"), // e.g., "Packed Powder", "Groomed"
+
+  // Operating hours
+  firstChair: text("first_chair"), // e.g., "8:30 AM"
+  lastChair: text("last_chair"), // e.g., "4:00 PM"
 });
 
 // Static resort info (doesn't change often)

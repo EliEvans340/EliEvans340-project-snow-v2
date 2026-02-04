@@ -26,6 +26,10 @@ export interface ScrapedConditions {
   seasonEnd: string | null;
   lastSnowfall: string | null;
   conditions: string | null;
+
+  // Operating hours
+  firstChair: string | null;
+  lastChair: string | null;
 }
 
 export interface ScrapedResortInfo {
@@ -159,6 +163,8 @@ function parseConditions(html: string): ScrapedConditions {
     seasonEnd: null,
     lastSnowfall: null,
     conditions: null,
+    firstChair: null,
+    lastChair: null,
   };
 
   // Check if resort is open
@@ -203,6 +209,23 @@ function parseConditions(html: string): ScrapedConditions {
   if (seasonMatch) {
     conditions.seasonStart = seasonMatch[1];
     conditions.seasonEnd = seasonMatch[2];
+  }
+
+  // Operating hours - look for patterns like "8:30 AM - 4:00 PM" or "First chair: 8:30"
+  const hoursMatch = html.match(/(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[-–]\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
+  if (hoursMatch) {
+    conditions.firstChair = hoursMatch[1].trim();
+    conditions.lastChair = hoursMatch[2].trim();
+  } else {
+    // Try separate patterns
+    const firstChairMatch = html.match(/(?:first\s*chair|opens?)[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
+    if (firstChairMatch) {
+      conditions.firstChair = firstChairMatch[1].trim();
+    }
+    const lastChairMatch = html.match(/(?:last\s*chair|closes?)[:\s]*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
+    if (lastChairMatch) {
+      conditions.lastChair = lastChairMatch[1].trim();
+    }
   }
 
   return conditions;

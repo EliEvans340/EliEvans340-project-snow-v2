@@ -36,6 +36,13 @@
       "when": 1770152173416,
       "tag": "0004_familiar_energizer",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1770235453233,
+      "tag": "0005_famous_juggernaut",
+      "breakpoints": true
     }
   ]
 }
