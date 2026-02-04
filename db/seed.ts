@@ -3342,10 +3342,6 @@ async function seed() {
   console.log("Starting seed...");
   console.log(`Total resorts to seed: ${resortData.length}`);
 
-  // Clear existing data
-  console.log("Clearing existing resorts...");
-  await db.delete(resorts);
-
   // Prepare resort records
   const resortRecords: NewResort[] = resortData.map((resort) => ({
     name: resort.name,
@@ -3359,16 +3355,29 @@ async function seed() {
     skiresortinfoId: resort.skiresortinfoId || null,
   }));
 
-  // Insert in batches of 50
-  const batchSize = 50;
-  let inserted = 0;
+  // Upsert one by one to avoid batch conflict issues
+  let processed = 0;
 
-  for (let i = 0; i < resortRecords.length; i += batchSize) {
-    const batch = resortRecords.slice(i, i + batchSize);
-    await db.insert(resorts).values(batch);
-    inserted += batch.length;
-    console.log(`Inserted ${inserted}/${resortRecords.length} resorts...`);
+  for (const record of resortRecords) {
+    await db.insert(resorts).values(record).onConflictDoUpdate({
+      target: resorts.slug,
+      set: {
+        name: record.name,
+        state: record.state,
+        region: record.region,
+        latitude: record.latitude,
+        longitude: record.longitude,
+        timezone: record.timezone,
+        websiteUrl: record.websiteUrl,
+        skiresortinfoId: record.skiresortinfoId,
+      },
+    });
+    processed++;
+    if (processed % 50 === 0) {
+      console.log(`Processed ${processed}/${resortRecords.length} resorts...`);
+    }
   }
+  console.log(`Processed ${processed}/${resortRecords.length} resorts...`);
 
   // Log summary by region
   const regionCounts = resortRecords.reduce(

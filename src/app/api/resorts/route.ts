@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
-import { resorts } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -15,18 +13,13 @@ export async function GET() {
 
   try {
     const sql = neon(process.env.DATABASE_URL);
-    const db = drizzle(sql);
 
-    const allResorts = await db
-      .select({
-        id: resorts.id,
-        name: resorts.name,
-        slug: resorts.slug,
-        state: resorts.state,
-        latitude: resorts.latitude,
-        longitude: resorts.longitude,
-      })
-      .from(resorts);
+    // Use raw SQL to avoid any ORM limits
+    const allResorts = await sql`
+      SELECT id, name, slug, state, latitude, longitude, skiresortinfo_id as "skiresortinfoId"
+      FROM resorts
+      ORDER BY name
+    `;
 
     return NextResponse.json(allResorts);
   } catch (error) {
