@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 import { SessionProvider } from "@/components/session-provider";
 import { Header } from "@/components/header";
@@ -34,6 +35,7 @@ export default function RootLayout({
           <Header />
           <main className="pt-16">{children}</main>
         </SessionProvider>
+        <Analytics />
       </body>
     </html>
   );
