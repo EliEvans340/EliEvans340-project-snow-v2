@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { resorts, resortConditions, resortInfo } from "@/db/schema";
 import { DailyForecastStrip, HourlyForecast } from "./weather-forecast";
+import { SnowfallForecastChart } from "@/components/charts/SnowfallForecastChart";
 
 interface ResortPageProps {
   params: Promise<{ slug: string }>;
@@ -87,18 +88,41 @@ export default async function ResortPage({ params }: ResortPageProps) {
       <header className="bg-snow-800 border-b border-snow-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Title Row */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
             <div>
               <h1 className="text-3xl sm:text-4xl font-bold text-ice-400">{resort.name}</h1>
               <p className="text-lg text-snow-300 mt-1">{resort.state}</p>
             </div>
-            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+            {/* Status Card */}
+            <div className={`flex flex-col gap-1 px-4 py-3 rounded-lg text-sm ${
               isOpen
-                ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                : "bg-snow-700 text-snow-400 border border-snow-600"
+                ? "bg-green-500/10 border border-green-500/30"
+                : "bg-snow-700/50 border border-snow-600"
             }`}>
-              <span className={`w-2 h-2 rounded-full ${isOpen ? "bg-green-400" : "bg-snow-500"}`} />
-              {isOpen ? "Open" : "Closed"}
+              <div className="flex items-center gap-2 font-medium">
+                <span className={`w-2 h-2 rounded-full ${isOpen ? "bg-green-400" : "bg-snow-500"}`} />
+                <span className={isOpen ? "text-green-400" : "text-snow-400"}>
+                  {isOpen ? "Open" : "Closed"}
+                </span>
+              </div>
+              {(resort.conditions?.seasonStart || resort.conditions?.seasonEnd) && (
+                <div className="text-snow-400 text-xs flex items-center gap-1.5">
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  <span>
+                    {resort.conditions?.seasonStart && new Date(resort.conditions.seasonStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    {" - "}
+                    {resort.conditions?.seasonEnd && new Date(resort.conditions.seasonEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </span>
+                </div>
+              )}
+              {(resort.conditions?.firstChair || resort.conditions?.lastChair) && (
+                <div className="text-snow-400 text-xs flex items-center gap-1.5">
+                  <ClockIcon className="w-3.5 h-3.5" />
+                  <span>
+                    {resort.conditions?.firstChair ?? "--"} - {resort.conditions?.lastChair ?? "--"}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -201,6 +225,11 @@ export default async function ResortPage({ params }: ResortPageProps) {
         {/* Daily Forecast Strip */}
         <section className="mb-8">
           <DailyForecastStrip slug={resort.slug} />
+        </section>
+
+        {/* Multi-Model Snowfall Chart */}
+        <section className="mb-8">
+          <SnowfallForecastChart slug={resort.slug} />
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -309,6 +338,22 @@ function TerrainIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21l6-9 4 5 5-7 3 4.5V21H3z" />
+    </svg>
+  );
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  );
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   );
 }
