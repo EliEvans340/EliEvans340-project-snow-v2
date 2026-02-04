@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { UserMenu } from "./user-menu";
+import { HeaderSearch } from "./header-search";
 
 export function Header() {
   return (
@@ -9,7 +10,10 @@ export function Header() {
           <Link href="/" className="flex items-center gap-2">
             <span className="text-xl font-bold text-ice-400">ProjectSnow</span>
           </Link>
-          <UserMenu />
+          <div className="flex items-center gap-4">
+            <HeaderSearch />
+            <UserMenu />
+          </div>
         </div>
       </div>
     </header>

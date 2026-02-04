@@ -252,7 +252,6 @@ function ClusterMarker({
 export default function ResortMap() {
   const [resorts, setResorts] = useState<Resort[]>([]);
   const [resortsLoading, setResortsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedState, setSelectedState] = useState<string>("");
   const [clusters, setClusters] = useState<ClusterOrMarker[]>([]);
   const [radarEnabled, setRadarEnabled] = useState(true);
@@ -303,14 +302,9 @@ export default function ResortMap() {
 
   const filteredResorts = useMemo(() => {
     return resorts.filter((resort) => {
-      const matchesSearch =
-        searchQuery === "" ||
-        resort.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesState =
-        selectedState === "" || resort.state === selectedState;
-      return matchesSearch && matchesState;
+      return selectedState === "" || resort.state === selectedState;
     });
-  }, [resorts, searchQuery, selectedState]);
+  }, [resorts, selectedState]);
 
   const center: [number, number] = [39.8283, -98.5795];
 
@@ -413,62 +407,35 @@ export default function ResortMap() {
         })}
       </MapContainer>
 
-      {/* Top Bar - Search and Controls */}
-      <div className="absolute top-0 left-0 right-0 bg-snow-900/95 backdrop-blur border-b border-snow-700 p-3 z-[1000]">
-        <div className="flex gap-3 items-center">
-          {/* Search */}
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search resorts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-1.5 bg-snow-800 border border-snow-600 rounded-lg text-snow-100 placeholder-snow-500 focus:outline-none focus:border-ice-500 focus:ring-1 focus:ring-ice-500 text-sm"
-            />
-          </div>
-          {/* State Filter */}
-          <div className="w-36">
-            <select
-              value={selectedState}
-              onChange={(e) => setSelectedState(e.target.value)}
-              className="w-full px-3 py-1.5 bg-snow-800 border border-snow-600 rounded-lg text-snow-100 focus:outline-none focus:border-ice-500 focus:ring-1 focus:ring-ice-500 text-sm"
-            >
-              <option value="">All States</option>
-              {states.map((state) => (
-                <option key={state} value={state}>
-                  {state}
-                </option>
-              ))}
-            </select>
-          </div>
-          {/* Resort Count */}
-          <div className="text-snow-400 text-sm whitespace-nowrap hidden sm:block">
-            {resortsLoading ? (
-              <span className="flex items-center gap-1">
-                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              </span>
-            ) : (
-              `${filteredResorts.length}`
-            )}
-          </div>
-          {/* Radar Toggle */}
-          <button
-            onClick={() => setRadarEnabled(!radarEnabled)}
-            className={`px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-2 text-sm ${
-              radarEnabled
-                ? "bg-ice-500/20 border-ice-500 text-ice-400"
-                : "bg-snow-800 border-snow-600 text-snow-400"
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <span className="hidden sm:inline">Radar</span>
-          </button>
-        </div>
+      {/* Map Controls */}
+      <div className="absolute top-4 right-4 z-[1000] flex gap-2">
+        {/* State Filter */}
+        <select
+          value={selectedState}
+          onChange={(e) => setSelectedState(e.target.value)}
+          className="px-3 py-1.5 bg-snow-800/90 border border-snow-600 rounded-lg text-snow-100 focus:outline-none focus:border-ice-500 text-sm"
+        >
+          <option value="">All States</option>
+          {states.map((state) => (
+            <option key={state} value={state}>
+              {state}
+            </option>
+          ))}
+        </select>
+        {/* Radar Toggle */}
+        <button
+          onClick={() => setRadarEnabled(!radarEnabled)}
+          className={`px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-2 text-sm ${
+            radarEnabled
+              ? "bg-ice-500/20 border-ice-500 text-ice-400"
+              : "bg-snow-800/90 border-snow-600 text-snow-400"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <span className="hidden sm:inline">Radar</span>
+        </button>
       </div>
     </div>
   );
