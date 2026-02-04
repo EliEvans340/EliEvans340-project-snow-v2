@@ -15,7 +15,18 @@ interface Resort {
   longitude: string | null;
 }
 
-// Simple dot marker for individual resorts
+// Most popular US ski resorts (highlighted in purple)
+const POPULAR_RESORTS = new Set([
+  "vail", "park-city", "breckenridge", "aspen-snowmass", "aspen-mountain",
+  "aspen-highlands", "buttermilk", "snowmass", "mammoth-mountain",
+  "telluride", "steamboat", "jackson-hole", "big-sky", "deer-valley",
+  "palisades-tahoe", "squaw-valley", "heavenly", "northstar",
+  "killington", "stowe", "whistler-blackcomb", "copper-mountain",
+  "keystone", "winter-park", "beaver-creek", "alta", "snowbird",
+  "sun-valley", "taos", "big-bear", "mount-bachelor", "crystal-mountain",
+]);
+
+// Simple dot marker for individual resorts (ice blue)
 const markerIcon = L.divIcon({
   html: `<div style="
     width: 10px;
@@ -30,19 +41,37 @@ const markerIcon = L.divIcon({
   popupAnchor: [0, -5],
 });
 
+// Purple dot marker for popular resorts
+const popularMarkerIcon = L.divIcon({
+  html: `<div style="
+    width: 12px;
+    height: 12px;
+    background: radial-gradient(circle, rgba(168, 85, 247, 1) 0%, rgba(168, 85, 247, 0.6) 50%, rgba(168, 85, 247, 0) 100%);
+    border-radius: 50%;
+    filter: blur(0.5px);
+  "></div>`,
+  className: "dot-marker popular",
+  iconSize: L.point(12, 12),
+  iconAnchor: L.point(6, 6),
+  popupAnchor: [0, -6],
+});
+
 // Cluster dot - size scales with count, no numbers
-function createClusterIcon(count: number) {
+// If hasPopular is true, use purple color
+function createClusterIcon(count: number, hasPopular: boolean = false) {
   // Scale from 14px (2 resorts) to 28px (50+ resorts)
   const minSize = 14;
   const maxSize = 28;
   const scale = Math.min(1, Math.log(count) / Math.log(50));
   const size = Math.round(minSize + (maxSize - minSize) * scale);
 
+  const color = hasPopular ? "168, 85, 247" : "56, 232, 255"; // purple or ice blue
+
   return L.divIcon({
     html: `<div style="
       width: ${size}px;
       height: ${size}px;
-      background: radial-gradient(circle, rgba(56, 232, 255, 0.9) 0%, rgba(56, 232, 255, 0.5) 60%, rgba(56, 232, 255, 0) 100%);
+      background: radial-gradient(circle, rgba(${color}, 0.9) 0%, rgba(${color}, 0.5) 60%, rgba(${color}, 0) 100%);
       border-radius: 50%;
       filter: blur(1px);
     "></div>`,
@@ -131,6 +160,15 @@ function RadarController({
     });
   }, [enabled, frames, currentIndex, opacity]);
 
+  return null;
+}
+
+// Signals when map is ready
+function MapReadyHandler({ onReady }: { onReady: () => void }) {
+  const map = useMap();
+  useEffect(() => {
+    onReady();
+  }, [map, onReady]);
   return null;
 }
 
@@ -243,7 +281,7 @@ function getUniqueStates(resorts: Resort[]): string[] {
 
 export default function ResortMap() {
   const [resorts, setResorts] = useState<Resort[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [resortsLoading, setResortsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedState, setSelectedState] = useState<string>("");
   const [clusters, setClusters] = useState<ClusterOrMarker[]>([]);
@@ -253,7 +291,9 @@ export default function ResortMap() {
   const [isPlaying, setIsPlaying] = useState(true);
   const [radarLoading, setRadarLoading] = useState(true);
   const [radarError, setRadarError] = useState<string | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
+  // Fetch resorts - don't block initial render
   useEffect(() => {
     async function fetchResorts() {
       try {
@@ -264,14 +304,16 @@ export default function ResortMap() {
       } catch (error) {
         console.error("Error fetching resorts:", error);
       } finally {
-        setLoading(false);
+        setResortsLoading(false);
       }
     }
     fetchResorts();
   }, []);
 
-  // Fetch radar frames from our cached API (builds up 24-hour history over time)
+  // Fetch radar frames AFTER map is ready (lazy load)
   useEffect(() => {
+    if (!mapReady) return;
+
     async function fetchRadarFrames() {
       try {
         const response = await fetch("/api/radar");
@@ -289,7 +331,6 @@ export default function ResortMap() {
         }
 
         setRadarFrames(frames);
-        // Start at the most recent frame (now)
         setCurrentFrameIndex(frames.length - 1);
         setRadarError(null);
       } catch (error) {
@@ -298,11 +339,14 @@ export default function ResortMap() {
       }
     }
 
-    fetchRadarFrames();
-    // Refresh radar data every 5 minutes (caches new frames each time)
+    // Small delay to let map render first
+    const timeout = setTimeout(fetchRadarFrames, 100);
     const interval = setInterval(fetchRadarFrames, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [mapReady]);
 
   // Animation loop - only runs after all frames are loaded
   useEffect(() => {
@@ -334,14 +378,6 @@ export default function ResortMap() {
   // US center coordinates
   const center: [number, number] = [39.8283, -98.5795];
 
-  if (loading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-snow-900">
-        <div className="text-ice-400 text-xl">Loading resorts...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="h-screen w-full relative">
       <MapContainer
@@ -350,26 +386,33 @@ export default function ResortMap() {
         className="h-full w-full"
         style={{ background: "#0f172a" }}
       >
+        <MapReadyHandler onReady={() => setMapReady(true)} />
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
-        {/* Weather Radar Controller - always mounted, handles visibility internally */}
-        <RadarController
-          enabled={radarEnabled}
-          frames={radarFrames}
-          currentIndex={currentFrameIndex}
-          opacity={0.7}
-          onLoadingChange={setRadarLoading}
-        />
-        <MapBoundsHandler
-          resorts={filteredResorts}
-          onVisibleResortsChange={setClusters}
-        />
+        {/* Weather Radar Controller - only load after map ready */}
+        {mapReady && (
+          <RadarController
+            enabled={radarEnabled}
+            frames={radarFrames}
+            currentIndex={currentFrameIndex}
+            opacity={0.7}
+            onLoadingChange={setRadarLoading}
+          />
+        )}
+        {/* Only render markers after resorts loaded */}
+        {!resortsLoading && (
+          <MapBoundsHandler
+            resorts={filteredResorts}
+            onVisibleResortsChange={setClusters}
+          />
+        )}
         {clusters.map((item, index) => {
           if (item.type === "marker") {
             const resort = item.resort;
             if (!resort.latitude || !resort.longitude) return null;
+            const isPopular = POPULAR_RESORTS.has(resort.slug);
             return (
               <Marker
                 key={resort.id}
@@ -377,7 +420,7 @@ export default function ResortMap() {
                   parseFloat(resort.latitude),
                   parseFloat(resort.longitude),
                 ]}
-                icon={markerIcon}
+                icon={isPopular ? popularMarkerIcon : markerIcon}
               >
                 <Popup className="resort-popup">
                   <div className="p-2">
@@ -396,11 +439,12 @@ export default function ResortMap() {
               </Marker>
             );
           } else {
+            const hasPopular = item.resorts.some((r) => POPULAR_RESORTS.has(r.slug));
             return (
               <Marker
                 key={`cluster-${index}`}
                 position={[item.lat, item.lng]}
-                icon={createClusterIcon(item.resorts.length)}
+                icon={createClusterIcon(item.resorts.length, hasPopular)}
               >
                 <Popup>
                   <div className="p-2 max-h-48 overflow-y-auto">
@@ -554,7 +598,17 @@ export default function ResortMap() {
             </select>
           </div>
           <div className="text-snow-400 text-sm whitespace-nowrap">
-            {filteredResorts.length} resorts
+            {resortsLoading ? (
+              <span className="flex items-center gap-1">
+                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Loading...
+              </span>
+            ) : (
+              `${filteredResorts.length} resorts`
+            )}
           </div>
         </div>
       </div>
