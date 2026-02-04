@@ -133,9 +133,9 @@ export default async function Home() {
   ]);
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-col lg:flex-row overflow-hidden">
       {/* Left Side - Landing Content */}
-      <div className="w-full lg:w-1/2 bg-snow-900 flex flex-col overflow-y-auto lg:max-h-screen">
+      <div className="w-full lg:w-1/2 bg-snow-900 flex flex-col overflow-y-auto lg:max-h-screen scrollbar-hide">
         {/* Hero Section */}
         <div className="px-8 py-12 lg:px-12">
           <h1 className="text-4xl lg:text-5xl font-bold text-ice-400 mb-4">
