@@ -1,11 +1,21 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
+import dynamic from "next/dynamic";
 import { getDb } from "@/db";
 import { resorts, resortConditions, resortInfo } from "@/db/schema";
 import { DailyForecastStrip, HourlyForecast } from "./weather-forecast";
 import { SnowfallForecastChart } from "@/components/charts/SnowfallForecastChart";
 import { SeasonSnowfallComparison } from "@/components/SeasonSnowfallComparison";
+
+const ResortSkiMap = dynamic(() => import("@/components/ResortSkiMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-snow-900">
+      <div className="text-ice-400 text-sm">Loading trail map...</div>
+    </div>
+  ),
+});
 
 interface ResortPageProps {
   params: Promise<{ slug: string }>;
@@ -333,18 +343,17 @@ export default async function ResortPage({ params }: ResortPageProps) {
             </div>
           </section>
 
-          {/* Resort Location */}
-          <section className="bg-snow-800 rounded-lg border border-snow-700 overflow-hidden">
-            <div className="px-4 py-3 border-b border-snow-700 flex items-center gap-2">
+          {/* Trail Map */}
+          <section className="bg-snow-800 rounded-lg border border-snow-700 overflow-hidden flex flex-col min-h-[300px]">
+            <div className="px-4 py-3 border-b border-snow-700 flex items-center gap-2 shrink-0">
               <MapPinIcon className="w-5 h-5 text-ice-400" />
-              <h2 className="text-lg font-semibold text-ice-400">Resort Location</h2>
+              <h2 className="text-lg font-semibold text-ice-400">Trail Map</h2>
             </div>
-            <div className="aspect-video bg-snow-900">
-              <iframe
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${resort.longitude - 0.05}%2C${resort.latitude - 0.03}%2C${resort.longitude + 0.05}%2C${resort.latitude + 0.03}&layer=cyclemap&marker=${resort.latitude}%2C${resort.longitude}`}
-                className="w-full h-full border-0"
-                title={`Map of ${resort.name}`}
-                loading="lazy"
+            <div className="flex-1 bg-snow-900 relative">
+              <ResortSkiMap
+                latitude={resort.latitude}
+                longitude={resort.longitude}
+                name={resort.name}
               />
             </div>
             {resort.websiteUrl && (
