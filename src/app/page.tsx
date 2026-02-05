@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { resorts, resortConditions } from "@/db/schema";
 import { desc, isNotNull, gt, inArray, eq, sql } from "drizzle-orm";
 import { neon } from "@neondatabase/serverless";
+import SnowAnimation from "@/components/SnowAnimation";
 
 const ResortMap = dynamic(() => import("@/components/ResortMap"), {
   ssr: false,
@@ -135,9 +136,10 @@ export default async function Home() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row overflow-hidden">
       {/* Left Side - Landing Content */}
-      <div className="w-full lg:w-1/2 bg-snow-900 flex flex-col overflow-y-auto lg:max-h-screen scrollbar-hide">
+      <div className="w-full lg:w-1/2 bg-snow-900 flex flex-col overflow-y-auto lg:max-h-screen scrollbar-hide relative">
+        <SnowAnimation />
         {/* Hero Section */}
-        <div className="px-8 py-12 lg:px-12">
+        <div className="relative z-10 px-8 py-12 lg:px-12">
           <h1 className="text-4xl lg:text-5xl font-bold text-ice-400 mb-4">
             ProjectSnow
           </h1>
@@ -171,7 +173,7 @@ export default async function Home() {
         </div>
 
         {/* Dynamic Content Sections */}
-        <div className="flex-1 px-8 lg:px-12 pb-8 space-y-5">
+        <div className="relative z-10 flex-1 px-8 lg:px-12 pb-8 space-y-5">
           {/* Fresh Snow Section - Horizontal scroll cards */}
           {freshSnowResorts.length > 0 && (
             <div>
@@ -293,7 +295,7 @@ export default async function Home() {
         </div>
 
         {/* Footer Stats */}
-        <div className="border-t border-snow-800 px-8 py-4 lg:px-12 mt-auto">
+        <div className="relative z-10 border-t border-snow-800 px-8 py-4 lg:px-12 mt-auto">
           <div className="flex items-center justify-between text-sm text-snow-500">
             <span>Data updates daily</span>
             <span>Powered by Open-Meteo</span>
