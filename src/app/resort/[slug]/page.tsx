@@ -94,7 +94,7 @@ export default async function ResortPage({ params }: ResortPageProps) {
   }
 
   const isOpen = resort.conditions?.isOpen === 1;
-  const photo = await getResortPhoto(resort.id, resort.name);
+  const photo = await getResortPhoto(resort.id, resort.name, resort.state);
 
   return (
     <div className="min-h-screen bg-snow-900">

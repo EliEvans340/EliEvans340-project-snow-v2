@@ -7,6 +7,8 @@ const CACHE_DAYS = 7;
 
 interface UnsplashPhoto {
   id: string;
+  width: number;
+  height: number;
   urls: { regular: string; small: string };
   blur_hash: string | null;
   alt_description: string | null;
@@ -31,14 +33,11 @@ export interface ResortPhotoResult {
   unsplashLink: string;
 }
 
-async function searchResortPhoto(
-  resortName: string
+async function searchUnsplash(
+  query: string,
+  apiKey: string
 ): Promise<UnsplashPhoto | null> {
-  const apiKey = process.env.UNSPLASH_API_KEY;
-  if (!apiKey) return null;
-
-  const query = `${resortName} skiing`;
-  const url = `${UNSPLASH_API_URL}/search/photos?query=${encodeURIComponent(query)}&per_page=1`;
+  const url = `${UNSPLASH_API_URL}/search/photos?query=${encodeURIComponent(query)}&orientation=landscape&per_page=1`;
 
   const res = await fetch(url, {
     headers: { Authorization: `Client-ID ${apiKey}` },
@@ -51,9 +50,25 @@ async function searchResortPhoto(
   return data.results[0] ?? null;
 }
 
+async function searchResortPhoto(
+  resortName: string,
+  state: string
+): Promise<UnsplashPhoto | null> {
+  const apiKey = process.env.UNSPLASH_API_KEY;
+  if (!apiKey) return null;
+
+  // Try resort-specific snowy landscape first
+  const photo = await searchUnsplash(`${resortName} snow mountain`, apiKey);
+  if (photo) return photo;
+
+  // Fall back to state-level snowy mountain landscape
+  return searchUnsplash(`${state} snowy mountain landscape`, apiKey);
+}
+
 export async function getResortPhoto(
   resortId: string,
-  resortName: string
+  resortName: string,
+  state: string
 ): Promise<ResortPhotoResult | null> {
   try {
     const db = getDb();
@@ -82,7 +97,7 @@ export async function getResortPhoto(
     }
 
     // Fetch from Unsplash
-    const photo = await searchResortPhoto(resortName);
+    const photo = await searchResortPhoto(resortName, state);
     if (!photo) return null;
 
     const expiresAt = new Date();
