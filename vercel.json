@@ -9,11 +9,5 @@
     "deploymentEnabled": {
       "main": true
     }
-  },
-  "crons": [
-    {
-      "path": "/api/scrape",
-      "schedule": "0 6 * * *"
-    }
-  ]
+  }
 }
