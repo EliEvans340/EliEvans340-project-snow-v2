@@ -2,11 +2,13 @@ import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { eq, desc } from "drizzle-orm";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { getDb } from "@/db";
 import { resorts, resortConditions, resortInfo } from "@/db/schema";
 import { DailyForecastStrip, HourlyForecast } from "./weather-forecast";
 import { SnowfallForecastChart } from "@/components/charts/SnowfallForecastChart";
 import { SeasonSnowfallComparison } from "@/components/SeasonSnowfallComparison";
+import { getResortPhoto } from "@/lib/unsplash";
 
 const ResortSkiMap = dynamic(() => import("@/components/ResortSkiMap"), {
   ssr: false,
@@ -59,6 +61,7 @@ async function getResort(slug: string) {
     .limit(1);
 
   return {
+    id: resort.id,
     name: resort.name,
     state: resort.state,
     latitude: resort.latitude ? parseFloat(resort.latitude) : 0,
@@ -91,12 +94,29 @@ export default async function ResortPage({ params }: ResortPageProps) {
   }
 
   const isOpen = resort.conditions?.isOpen === 1;
+  const photo = await getResortPhoto(resort.id, resort.name);
 
   return (
     <div className="min-h-screen bg-snow-900">
-      {/* Header with Stats */}
-      <header className="bg-snow-800 border-b border-snow-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Header with Hero Image */}
+      <header className="relative overflow-hidden border-b border-snow-700">
+        {/* Background Image */}
+        {photo ? (
+          <Image
+            src={photo.imageUrl}
+            alt={photo.altDescription || `${resort.name} ski resort`}
+            fill
+            priority
+            className="object-cover"
+            sizes="100vw"
+          />
+        ) : null}
+
+        {/* Gradient Overlay */}
+        <div className={`absolute inset-0 ${photo ? "bg-gradient-to-t from-snow-900 via-snow-900/70 to-snow-900/40" : "bg-snow-800"}`} />
+
+        {/* Header Content */}
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Title Row */}
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
             <div>
@@ -159,6 +179,29 @@ export default async function ResortPage({ params }: ResortPageProps) {
             />
           </div>
 
+          {/* Unsplash Attribution */}
+          {photo && (
+            <div className="mt-4 text-xs text-snow-500">
+              Photo by{" "}
+              <a
+                href={`${photo.photographerUrl}?utm_source=projectsnow&utm_medium=referral`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-snow-300"
+              >
+                {photo.photographerName}
+              </a>
+              {" "}on{" "}
+              <a
+                href="https://unsplash.com/?utm_source=projectsnow&utm_medium=referral"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-snow-300"
+              >
+                Unsplash
+              </a>
+            </div>
+          )}
         </div>
       </header>
 
