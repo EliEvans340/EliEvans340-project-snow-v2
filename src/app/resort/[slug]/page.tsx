@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { resorts, resortConditions, resortInfo } from "@/db/schema";
 import { DailyForecastStrip, HourlyForecast } from "./weather-forecast";
 import { SnowfallForecastChart } from "@/components/charts/SnowfallForecastChart";
+import { SeasonSnowfallComparison } from "@/components/SeasonSnowfallComparison";
 
 interface ResortPageProps {
   params: Promise<{ slug: string }>;
@@ -235,6 +236,9 @@ export default async function ResortPage({ params }: ResortPageProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column */}
           <div className="flex flex-col gap-8">
+            {/* Season Snowfall Comparison */}
+            <SeasonSnowfallComparison slug={resort.slug} />
+
             {/* Resort Map */}
             <section className="bg-snow-800 rounded-lg border border-snow-700 overflow-hidden">
               <div className="px-4 py-3 border-b border-snow-700 flex items-center gap-2">
