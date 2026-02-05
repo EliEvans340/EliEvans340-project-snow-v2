@@ -81,7 +81,6 @@ export default async function ResortPage({ params }: ResortPageProps) {
   }
 
   const isOpen = resort.conditions?.isOpen === 1;
-  const hasTerrainData = resort.info?.terrainEasyPct || resort.info?.terrainIntermediatePct || resort.info?.terrainDifficultPct;
 
   return (
     <div className="min-h-screen bg-snow-900">
@@ -95,35 +94,15 @@ export default async function ResortPage({ params }: ResortPageProps) {
               <p className="text-lg text-snow-300 mt-1">{resort.state}</p>
             </div>
             {/* Status Card */}
-            <div className={`flex flex-col gap-1 px-4 py-3 rounded-lg text-sm ${
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
               isOpen
                 ? "bg-green-500/10 border border-green-500/30"
                 : "bg-snow-700/50 border border-snow-600"
             }`}>
-              <div className="flex items-center gap-2 font-medium">
-                <span className={`w-2 h-2 rounded-full ${isOpen ? "bg-green-400" : "bg-snow-500"}`} />
-                <span className={isOpen ? "text-green-400" : "text-snow-400"}>
-                  {isOpen ? "Open" : "Closed"}
-                </span>
-              </div>
-              {(resort.conditions?.seasonStart || resort.conditions?.seasonEnd) && (
-                <div className="text-snow-400 text-xs flex items-center gap-1.5">
-                  <CalendarIcon className="w-3.5 h-3.5" />
-                  <span>
-                    {resort.conditions?.seasonStart && new Date(resort.conditions.seasonStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    {" - "}
-                    {resort.conditions?.seasonEnd && new Date(resort.conditions.seasonEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </span>
-                </div>
-              )}
-              {(resort.conditions?.firstChair || resort.conditions?.lastChair) && (
-                <div className="text-snow-400 text-xs flex items-center gap-1.5">
-                  <ClockIcon className="w-3.5 h-3.5" />
-                  <span>
-                    {resort.conditions?.firstChair ?? "--"} - {resort.conditions?.lastChair ?? "--"}
-                  </span>
-                </div>
-              )}
+              <span className={`w-2 h-2 rounded-full ${isOpen ? "bg-green-400" : "bg-snow-500"}`} />
+              <span className={`font-medium ${isOpen ? "text-green-400" : "text-snow-400"}`}>
+                {isOpen ? "Open" : "Closed"}
+              </span>
             </div>
           </div>
 
@@ -170,59 +149,221 @@ export default async function ResortPage({ params }: ResortPageProps) {
             />
           </div>
 
-          {/* Terrain Difficulty Bar */}
-          {hasTerrainData && (
-            <div className="mt-4 pt-4 border-t border-snow-700">
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-snow-400">Difficulty:</span>
-                <div className="flex-1 flex gap-1 h-2 max-w-md">
-                  {resort.info?.terrainEasyPct != null && resort.info.terrainEasyPct > 0 && (
-                    <div
-                      className="h-full rounded-full bg-green-500"
-                      style={{ width: `${resort.info.terrainEasyPct}%` }}
-                    />
-                  )}
-                  {resort.info?.terrainIntermediatePct != null && resort.info.terrainIntermediatePct > 0 && (
-                    <div
-                      className="h-full rounded-full bg-blue-500"
-                      style={{ width: `${resort.info.terrainIntermediatePct}%` }}
-                    />
-                  )}
-                  {resort.info?.terrainDifficultPct != null && resort.info.terrainDifficultPct > 0 && (
-                    <div
-                      className="h-full rounded-full bg-black border border-snow-600"
-                      style={{ width: `${resort.info.terrainDifficultPct}%` }}
-                    />
-                  )}
-                </div>
-                <div className="flex gap-3 text-xs text-snow-400">
-                  {resort.info?.terrainEasyPct != null && resort.info.terrainEasyPct > 0 && (
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-green-500" />
-                      {resort.info.terrainEasyPct}%
-                    </span>
-                  )}
-                  {resort.info?.terrainIntermediatePct != null && resort.info.terrainIntermediatePct > 0 && (
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      {resort.info.terrainIntermediatePct}%
-                    </span>
-                  )}
-                  {resort.info?.terrainDifficultPct != null && resort.info.terrainDifficultPct > 0 && (
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-black border border-snow-500" />
-                      {resort.info.terrainDifficultPct}%
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Resort Stats & Location - Side by Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Resort Stats */}
+          <section className="bg-snow-800 rounded-lg border border-snow-700 overflow-hidden">
+            <div className="px-4 py-3 border-b border-snow-700 flex items-center gap-2">
+              <MountainIcon className="w-5 h-5 text-ice-400" />
+              <h2 className="text-lg font-semibold text-ice-400">Resort Stats</h2>
+            </div>
+            <div className="p-4 space-y-5">
+              {/* Elevation */}
+              <div>
+                <h3 className="text-sm font-medium text-snow-300 mb-3">Elevation</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-snow-900/50 rounded-lg p-3 text-center">
+                    <div className="text-lg font-semibold text-snow-100">
+                      {metersToFeet(resort.info?.elevationSummit ?? null)}
+                      <span className="text-xs text-snow-500 ml-1">ft</span>
+                    </div>
+                    <div className="text-xs text-snow-400">Summit</div>
+                  </div>
+                  <div className="bg-snow-900/50 rounded-lg p-3 text-center">
+                    <div className="text-lg font-semibold text-snow-100">
+                      {metersToFeet(resort.info?.elevationBase ?? null)}
+                      <span className="text-xs text-snow-500 ml-1">ft</span>
+                    </div>
+                    <div className="text-xs text-snow-400">Base</div>
+                  </div>
+                  <div className="bg-snow-900/50 rounded-lg p-3 text-center">
+                    <div className="text-lg font-semibold text-ice-300">
+                      {metersToFeet(resort.info?.verticalDrop ?? null)}
+                      <span className="text-xs text-ice-500 ml-1">ft</span>
+                    </div>
+                    <div className="text-xs text-snow-400">Vertical</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Terrain Difficulty */}
+              {(resort.info?.terrainEasyPct || resort.info?.terrainIntermediatePct || resort.info?.terrainDifficultPct) && (
+                <div>
+                  <h3 className="text-sm font-medium text-snow-300 mb-3">Terrain Difficulty</h3>
+                  {/* Progress Bar */}
+                  <div className="flex gap-0.5 h-3 rounded-full overflow-hidden mb-3">
+                    {resort.info?.terrainEasyPct != null && resort.info.terrainEasyPct > 0 && (
+                      <div
+                        className="h-full bg-green-500"
+                        style={{ width: `${resort.info.terrainEasyPct}%` }}
+                      />
+                    )}
+                    {resort.info?.terrainIntermediatePct != null && resort.info.terrainIntermediatePct > 0 && (
+                      <div
+                        className="h-full bg-blue-500"
+                        style={{ width: `${resort.info.terrainIntermediatePct}%` }}
+                      />
+                    )}
+                    {resort.info?.terrainDifficultPct != null && resort.info.terrainDifficultPct > 0 && (
+                      <div
+                        className="h-full bg-black"
+                        style={{ width: `${resort.info.terrainDifficultPct}%` }}
+                      />
+                    )}
+                  </div>
+                  {/* Legend */}
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-green-500 flex-shrink-0" />
+                      <div>
+                        <div className="text-snow-100 font-medium">{resort.info?.terrainEasyPct ?? 0}%</div>
+                        <div className="text-xs text-snow-500">
+                          {resort.info?.terrainEasyKm ? `${parseFloat(resort.info.terrainEasyKm).toFixed(1)} km` : "--"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0" />
+                      <div>
+                        <div className="text-snow-100 font-medium">{resort.info?.terrainIntermediatePct ?? 0}%</div>
+                        <div className="text-xs text-snow-500">
+                          {resort.info?.terrainIntermediateKm ? `${parseFloat(resort.info.terrainIntermediateKm).toFixed(1)} km` : "--"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-black border border-snow-600 flex-shrink-0" />
+                      <div>
+                        <div className="text-snow-100 font-medium">{resort.info?.terrainDifficultPct ?? 0}%</div>
+                        <div className="text-xs text-snow-500">
+                          {resort.info?.terrainDifficultKm ? `${parseFloat(resort.info.terrainDifficultKm).toFixed(1)} km` : "--"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Lift Types */}
+              <div>
+                <h3 className="text-sm font-medium text-snow-300 mb-3">Lifts</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {resort.info?.liftsGondolas != null && resort.info.liftsGondolas > 0 && (
+                    <div className="flex items-center gap-2 bg-snow-900/50 rounded-lg px-3 py-2">
+                      <GondolaIcon className="w-4 h-4 text-ice-400" />
+                      <span className="text-snow-100">{resort.info.liftsGondolas}</span>
+                      <span className="text-xs text-snow-400">Gondolas</span>
+                    </div>
+                  )}
+                  {resort.info?.liftsChairliftsHighSpeed != null && resort.info.liftsChairliftsHighSpeed > 0 && (
+                    <div className="flex items-center gap-2 bg-snow-900/50 rounded-lg px-3 py-2">
+                      <ChairliftIcon className="w-4 h-4 text-ice-400" />
+                      <span className="text-snow-100">{resort.info.liftsChairliftsHighSpeed}</span>
+                      <span className="text-xs text-snow-400">Chairlifts</span>
+                    </div>
+                  )}
+                  {resort.info?.liftsChairliftsFixedGrip != null && resort.info.liftsChairliftsFixedGrip > 0 && (
+                    <div className="flex items-center gap-2 bg-snow-900/50 rounded-lg px-3 py-2">
+                      <ChairliftIcon className="w-4 h-4 text-snow-400" />
+                      <span className="text-snow-100">{resort.info.liftsChairliftsFixedGrip}</span>
+                      <span className="text-xs text-snow-400">Fixed-Grip</span>
+                    </div>
+                  )}
+                  {resort.info?.liftsSurface != null && resort.info.liftsSurface > 0 && (
+                    <div className="flex items-center gap-2 bg-snow-900/50 rounded-lg px-3 py-2">
+                      <SurfaceLiftIcon className="w-4 h-4 text-snow-400" />
+                      <span className="text-snow-100">{resort.info.liftsSurface}</span>
+                      <span className="text-xs text-snow-400">Surface</span>
+                    </div>
+                  )}
+                  {resort.info?.liftsCarpets != null && resort.info.liftsCarpets > 0 && (
+                    <div className="flex items-center gap-2 bg-snow-900/50 rounded-lg px-3 py-2">
+                      <CarpetIcon className="w-4 h-4 text-snow-400" />
+                      <span className="text-snow-100">{resort.info.liftsCarpets}</span>
+                      <span className="text-xs text-snow-400">Carpets</span>
+                    </div>
+                  )}
+                  {/* Fallback if no breakdown available */}
+                  {!resort.info?.liftsGondolas && !resort.info?.liftsChairliftsHighSpeed &&
+                   !resort.info?.liftsChairliftsFixedGrip && !resort.info?.liftsSurface &&
+                   !resort.info?.liftsCarpets && resort.info?.liftsTotal && (
+                    <div className="flex items-center gap-2 bg-snow-900/50 rounded-lg px-3 py-2 col-span-2">
+                      <LiftIcon className="w-4 h-4 text-ice-400" />
+                      <span className="text-snow-100">{resort.info.liftsTotal}</span>
+                      <span className="text-xs text-snow-400">Total Lifts</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Season & Hours */}
+              <div className="pt-3 border-t border-snow-700">
+                <div className="grid grid-cols-2 gap-4">
+                  {(resort.conditions?.seasonStart || resort.conditions?.seasonEnd) && (
+                    <div className="flex items-start gap-2">
+                      <CalendarIcon className="w-4 h-4 text-ice-400 mt-0.5" />
+                      <div>
+                        <div className="text-xs text-snow-400">Season</div>
+                        <div className="text-sm text-snow-100">
+                          {resort.conditions?.seasonStart && new Date(resort.conditions.seasonStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          {" - "}
+                          {resort.conditions?.seasonEnd && new Date(resort.conditions.seasonEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {(resort.conditions?.firstChair || resort.conditions?.lastChair) && (
+                    <div className="flex items-start gap-2">
+                      <ClockIcon className="w-4 h-4 text-ice-400 mt-0.5" />
+                      <div>
+                        <div className="text-xs text-snow-400">Hours</div>
+                        <div className="text-sm text-snow-100">
+                          {resort.conditions?.firstChair ?? "--"} - {resort.conditions?.lastChair ?? "--"}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Resort Location */}
+          <section className="bg-snow-800 rounded-lg border border-snow-700 overflow-hidden">
+            <div className="px-4 py-3 border-b border-snow-700 flex items-center gap-2">
+              <MapPinIcon className="w-5 h-5 text-ice-400" />
+              <h2 className="text-lg font-semibold text-ice-400">Resort Location</h2>
+            </div>
+            <div className="aspect-video bg-snow-900">
+              <iframe
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${resort.longitude - 0.05}%2C${resort.latitude - 0.03}%2C${resort.longitude + 0.05}%2C${resort.latitude + 0.03}&layer=cyclemap&marker=${resort.latitude}%2C${resort.longitude}`}
+                className="w-full h-full border-0"
+                title={`Map of ${resort.name}`}
+                loading="lazy"
+              />
+            </div>
+            {resort.websiteUrl && (
+              <div className="px-4 py-3 border-t border-snow-700">
+                <a
+                  href={resort.websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-ice-400 hover:text-ice-300 transition-colors text-sm"
+                >
+                  <GlobeIcon className="w-4 h-4" />
+                  Visit Resort Website
+                  <ExternalLinkIcon className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+          </section>
+        </div>
+
         {/* Daily Forecast Strip */}
         <section className="mb-8">
           <DailyForecastStrip slug={resort.slug} />
@@ -238,36 +379,6 @@ export default async function ResortPage({ params }: ResortPageProps) {
           <div className="flex flex-col gap-8">
             {/* Season Snowfall Comparison */}
             <SeasonSnowfallComparison slug={resort.slug} />
-
-            {/* Resort Map */}
-            <section className="bg-snow-800 rounded-lg border border-snow-700 overflow-hidden">
-              <div className="px-4 py-3 border-b border-snow-700 flex items-center gap-2">
-                <MapPinIcon className="w-5 h-5 text-ice-400" />
-                <h2 className="text-lg font-semibold text-ice-400">Resort Location</h2>
-              </div>
-              <div className="aspect-video bg-snow-900">
-                <iframe
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${resort.longitude - 0.05}%2C${resort.latitude - 0.03}%2C${resort.longitude + 0.05}%2C${resort.latitude + 0.03}&layer=cyclemap&marker=${resort.latitude}%2C${resort.longitude}`}
-                  className="w-full h-full border-0"
-                  title={`Map of ${resort.name}`}
-                  loading="lazy"
-                />
-              </div>
-              {resort.websiteUrl && (
-                <div className="px-4 py-3 border-t border-snow-700">
-                  <a
-                    href={resort.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-ice-400 hover:text-ice-300 transition-colors text-sm"
-                  >
-                    <GlobeIcon className="w-4 h-4" />
-                    Visit Resort Website
-                    <ExternalLinkIcon className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
-            </section>
           </div>
 
           {/* Right Column */}
@@ -374,6 +485,46 @@ function ExternalLinkIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+    </svg>
+  );
+}
+
+function MountainIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21l6-9 3 4 5-7 4 6v6H3z" />
+    </svg>
+  );
+}
+
+function GondolaIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h16M12 4v4M8 8h8v8a2 2 0 01-2 2h-4a2 2 0 01-2-2V8z" />
+    </svg>
+  );
+}
+
+function ChairliftIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4l16 12M12 8v8M8 12h8" />
+    </svg>
+  );
+}
+
+function SurfaceLiftIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19l14-14M12 12v7" />
+    </svg>
+  );
+}
+
+function CarpetIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h16M4 12l2-2m-2 2l2 2m14-2l-2-2m2 2l-2 2M8 8h8M8 16h8" />
     </svg>
   );
 }

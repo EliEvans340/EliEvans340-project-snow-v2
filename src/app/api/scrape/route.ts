@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb, resorts, resortConditions, resortInfo } from "@/db";
 import { scrapeResortConditions } from "@/lib/scraper";
-import { isNotNull } from "drizzle-orm";
+import { isNotNull, eq } from "drizzle-orm";
 
 // Scrape all resorts with skiresortinfoId
 async function runFullScrape() {
@@ -79,6 +79,11 @@ async function runFullScrape() {
           terrainIntermediatePct: scraped.info.terrainIntermediatePct,
           terrainDifficultPct: scraped.info.terrainDifficultPct,
           liftsTotal: scraped.info.liftsTotal,
+          liftsGondolas: scraped.info.liftsGondolas,
+          liftsChairliftsHighSpeed: scraped.info.liftsChairliftsHighSpeed,
+          liftsChairliftsFixedGrip: scraped.info.liftsChairliftsFixedGrip,
+          liftsSurface: scraped.info.liftsSurface,
+          liftsCarpets: scraped.info.liftsCarpets,
           runsTotal: scraped.info.runsTotal,
         })
         .onConflictDoUpdate({
@@ -95,6 +100,11 @@ async function runFullScrape() {
             terrainIntermediatePct: scraped.info.terrainIntermediatePct,
             terrainDifficultPct: scraped.info.terrainDifficultPct,
             liftsTotal: scraped.info.liftsTotal,
+            liftsGondolas: scraped.info.liftsGondolas,
+            liftsChairliftsHighSpeed: scraped.info.liftsChairliftsHighSpeed,
+            liftsChairliftsFixedGrip: scraped.info.liftsChairliftsFixedGrip,
+            liftsSurface: scraped.info.liftsSurface,
+            liftsCarpets: scraped.info.liftsCarpets,
             runsTotal: scraped.info.runsTotal,
             updatedAt: new Date(),
           },
@@ -118,9 +128,11 @@ async function runFullScrape() {
 // GET /api/scrape - Vercel Cron or single resort test
 // Cron: GET /api/scrape (no params)
 // Test: GET /api/scrape?resort=vail
+// Save: GET /api/scrape?resort=vail&save=true (saves to DB)
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const resortSlug = searchParams.get("resort");
+  const shouldSave = searchParams.get("save") === "true";
 
   // Single resort test mode
   if (resortSlug) {
@@ -132,6 +144,96 @@ export async function GET(request: Request) {
           { status: 404 }
         );
       }
+
+      // Optionally save to database
+      if (shouldSave) {
+        const db = getDb();
+        const today = new Date().toISOString().split("T")[0];
+
+        // Find the resort by skiresortinfoId
+        const [resort] = await db
+          .select()
+          .from(resorts)
+          .where(eq(resorts.skiresortinfoId, resortSlug))
+          .limit(1);
+
+        if (resort) {
+          // Save conditions
+          await db.insert(resortConditions).values({
+            resortId: resort.id,
+            scrapedDate: today,
+            snowDepthSummit: scraped.conditions.snowDepthSummit,
+            snowDepthBase: scraped.conditions.snowDepthBase,
+            newSnow24h: scraped.conditions.newSnow24h,
+            newSnow48h: scraped.conditions.newSnow48h,
+            newSnow7d: scraped.conditions.newSnow7d,
+            liftsOpen: scraped.conditions.liftsOpen,
+            liftsTotal: scraped.conditions.liftsTotal,
+            runsOpen: scraped.conditions.runsOpen,
+            runsTotal: scraped.conditions.runsTotal,
+            terrainOpenKm: scraped.conditions.terrainOpenKm?.toString(),
+            terrainTotalKm: scraped.conditions.terrainTotalKm?.toString(),
+            terrainOpenPct: scraped.conditions.terrainOpenPct,
+            isOpen: scraped.conditions.isOpen ? 1 : 0,
+            seasonStart: scraped.conditions.seasonStart,
+            seasonEnd: scraped.conditions.seasonEnd,
+            lastSnowfall: scraped.conditions.lastSnowfall,
+            conditions: scraped.conditions.conditions,
+            firstChair: scraped.conditions.firstChair,
+            lastChair: scraped.conditions.lastChair,
+          });
+
+          // Save/update resort info
+          await db
+            .insert(resortInfo)
+            .values({
+              resortId: resort.id,
+              elevationBase: scraped.info.elevationBase,
+              elevationSummit: scraped.info.elevationSummit,
+              verticalDrop: scraped.info.verticalDrop,
+              terrainTotalKm: scraped.info.terrainTotalKm?.toString(),
+              terrainEasyKm: scraped.info.terrainEasyKm?.toString(),
+              terrainIntermediateKm: scraped.info.terrainIntermediateKm?.toString(),
+              terrainDifficultKm: scraped.info.terrainDifficultKm?.toString(),
+              terrainEasyPct: scraped.info.terrainEasyPct,
+              terrainIntermediatePct: scraped.info.terrainIntermediatePct,
+              terrainDifficultPct: scraped.info.terrainDifficultPct,
+              liftsTotal: scraped.info.liftsTotal,
+              liftsGondolas: scraped.info.liftsGondolas,
+              liftsChairliftsHighSpeed: scraped.info.liftsChairliftsHighSpeed,
+              liftsChairliftsFixedGrip: scraped.info.liftsChairliftsFixedGrip,
+              liftsSurface: scraped.info.liftsSurface,
+              liftsCarpets: scraped.info.liftsCarpets,
+              runsTotal: scraped.info.runsTotal,
+            })
+            .onConflictDoUpdate({
+              target: resortInfo.resortId,
+              set: {
+                elevationBase: scraped.info.elevationBase,
+                elevationSummit: scraped.info.elevationSummit,
+                verticalDrop: scraped.info.verticalDrop,
+                terrainTotalKm: scraped.info.terrainTotalKm?.toString(),
+                terrainEasyKm: scraped.info.terrainEasyKm?.toString(),
+                terrainIntermediateKm: scraped.info.terrainIntermediateKm?.toString(),
+                terrainDifficultKm: scraped.info.terrainDifficultKm?.toString(),
+                terrainEasyPct: scraped.info.terrainEasyPct,
+                terrainIntermediatePct: scraped.info.terrainIntermediatePct,
+                terrainDifficultPct: scraped.info.terrainDifficultPct,
+                liftsTotal: scraped.info.liftsTotal,
+                liftsGondolas: scraped.info.liftsGondolas,
+                liftsChairliftsHighSpeed: scraped.info.liftsChairliftsHighSpeed,
+                liftsChairliftsFixedGrip: scraped.info.liftsChairliftsFixedGrip,
+                liftsSurface: scraped.info.liftsSurface,
+                liftsCarpets: scraped.info.liftsCarpets,
+                runsTotal: scraped.info.runsTotal,
+                updatedAt: new Date(),
+              },
+            });
+
+          return NextResponse.json({ ...scraped, saved: true, resortId: resort.id });
+        }
+      }
+
       return NextResponse.json(scraped);
     } catch (error) {
       console.error("Scrape error:", error);

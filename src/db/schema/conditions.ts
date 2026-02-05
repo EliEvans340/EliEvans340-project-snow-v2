@@ -74,6 +74,11 @@ export const resortInfo = pgTable("resort_info", {
 
   // Lifts
   liftsTotal: integer("lifts_total"),
+  liftsGondolas: integer("lifts_gondolas"),
+  liftsChairliftsHighSpeed: integer("lifts_chairlifts_high_speed"),
+  liftsChairliftsFixedGrip: integer("lifts_chairlifts_fixed_grip"),
+  liftsSurface: integer("lifts_surface"),
+  liftsCarpets: integer("lifts_carpets"),
 
   // Runs
   runsTotal: integer("runs_total"),
