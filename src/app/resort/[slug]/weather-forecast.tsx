@@ -494,7 +494,8 @@ function HourlyTimelineChart({
                 <div className="sticky top-0 z-10 bg-snow-800/95 backdrop-blur-sm border-b border-snow-700/50 px-2 py-1">
                   <span className="text-xs font-medium text-snow-400">Temperature</span>
                 </div>
-                <div style={{ height: totalHeight }}>
+                <div style={{ height: totalHeight }} className="relative">
+                  <RowBanding rows={rows} />
                   <ResponsiveContainer width="100%" height={totalHeight}>
                     <AreaChart
                       data={chartData}
@@ -586,7 +587,8 @@ function HourlyTimelineChart({
                 <div className="sticky top-0 z-10 bg-snow-800/95 backdrop-blur-sm border-b border-snow-700/50 px-2 py-1">
                   <span className="text-xs font-medium text-snow-400">Snow</span>
                 </div>
-                <div style={{ height: totalHeight }}>
+                <div style={{ height: totalHeight }} className="relative">
+                  <RowBanding rows={rows} />
                   <ResponsiveContainer width="100%" height={totalHeight}>
                     <ComposedChart
                       data={chartData}
@@ -657,7 +659,8 @@ function HourlyTimelineChart({
                 <div className="sticky top-0 z-10 bg-snow-800/95 backdrop-blur-sm border-b border-snow-700/50 px-2 py-1">
                   <span className="text-xs font-medium text-snow-400">Wind</span>
                 </div>
-                <div style={{ height: totalHeight }}>
+                <div style={{ height: totalHeight }} className="relative">
+                  <RowBanding rows={rows} />
                   <ResponsiveContainer width="100%" height={totalHeight}>
                     <AreaChart
                       data={chartData}
@@ -786,7 +789,7 @@ function TimeConditionsColumn({
           )}
           <div
             className={`flex items-center gap-1.5 px-2 transition-colors ${
-              row.isNight ? "bg-snow-900/40" : row.index % 2 === 0 ? "bg-snow-900/15" : ""
+              row.isNight ? "bg-snow-900/40" : row.index % 2 === 0 ? "bg-snow-900/30" : ""
             } ${hoveredIndex === row.index ? "bg-ice-500/10" : ""} ${
               row.isNow ? "border-l-2 border-ice-400" : ""
             }`}
@@ -930,7 +933,7 @@ function MobileTimelineView({
                 )}
                 <div
                   className={`flex items-center gap-1 px-1.5 ${
-                    row.isNight ? "bg-snow-900/40" : row.index % 2 === 0 ? "bg-snow-900/15" : ""
+                    row.isNight ? "bg-snow-900/40" : row.index % 2 === 0 ? "bg-snow-900/30" : ""
                   } ${row.isNow ? "border-l-2 border-ice-400" : ""}`}
                   style={{ height: ROW_HEIGHT }}
                 >
@@ -1053,6 +1056,28 @@ function MobileTooltip({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Row Banding ──────────────────────────────────────────────────
+
+function RowBanding({ rows }: { rows: TimelineRow[] }) {
+  return (
+    <div className="absolute inset-0 pointer-events-none z-0">
+      {rows.map((row) => (
+        <div
+          key={row.index}
+          className={
+            row.isNight
+              ? "bg-snow-900/40"
+              : row.index % 2 === 0
+              ? "bg-snow-900/30"
+              : ""
+          }
+          style={{ height: ROW_HEIGHT }}
+        />
+      ))}
     </div>
   );
 }
