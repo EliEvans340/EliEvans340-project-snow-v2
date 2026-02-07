@@ -15,7 +15,7 @@ export async function GET() {
   try {
     const sql = neon(process.env.DATABASE_URL);
 
-    // Fetch resorts with latest conditions data
+    // Fetch resorts with latest conditions data + snow depth readings
     const allResorts = await sql`
       SELECT
         r.id, r.name, r.slug, r.state, r.latitude, r.longitude,
@@ -23,7 +23,9 @@ export async function GET() {
         c.new_snow_24h as "newSnow24h",
         c.snow_depth_summit as "snowDepthSummit",
         c.is_open as "isOpen",
-        c.conditions
+        c.conditions,
+        sd.depth_inches as "fallbackDepthInches",
+        sd.source as "fallbackSource"
       FROM resorts r
       LEFT JOIN LATERAL (
         SELECT * FROM resort_conditions
@@ -31,6 +33,7 @@ export async function GET() {
         ORDER BY scraped_at DESC
         LIMIT 1
       ) c ON true
+      LEFT JOIN snow_depth_readings sd ON sd.resort_id = r.id
       WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
       ORDER BY r.name
     `;

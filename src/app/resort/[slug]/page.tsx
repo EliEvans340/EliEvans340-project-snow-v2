@@ -9,6 +9,7 @@ import { DailyForecastStrip, HourlyForecast } from "./weather-forecast";
 import { SnowfallForecastChart } from "@/components/charts/SnowfallForecastChart";
 import { SeasonSnowfallComparison } from "@/components/SeasonSnowfallComparison";
 import { getResortPhoto } from "@/lib/unsplash";
+import { getSnowDepthForResort, getSnowDepthFallback } from "@/lib/snow-depth";
 
 const ResortSkiMap = dynamic(() => import("@/components/ResortSkiMap"), {
   ssr: false,
@@ -94,7 +95,22 @@ export default async function ResortPage({ params }: ResortPageProps) {
   }
 
   const isOpen = resort.conditions?.isOpen === 1;
-  const photo = await getResortPhoto(resort.id, resort.name, resort.state);
+  const needsSnowFallback =
+    resort.conditions?.snowDepthSummit == null &&
+    resort.conditions?.snowDepthBase == null;
+
+  // DB-first snow depth: try stored reading, fall back to on-demand
+  const [photo, dbSnowDepth] = await Promise.all([
+    getResortPhoto(resort.id, resort.name, resort.state),
+    needsSnowFallback ? getSnowDepthForResort(resort.id) : Promise.resolve(null),
+  ]);
+
+  // If DB has no row, try on-demand fallback
+  const snowFallback =
+    dbSnowDepth ??
+    (needsSnowFallback && resort.latitude && resort.longitude
+      ? await getSnowDepthFallback(resort.latitude, resort.longitude, resort.state)
+      : null);
 
   return (
     <div className="min-h-screen bg-snow-900">
@@ -139,18 +155,30 @@ export default async function ResortPage({ params }: ResortPageProps) {
           {/* Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {/* Snow Stats */}
-            <HeaderStat
-              icon={<SnowflakeIcon className="w-4 h-4" />}
-              label="Summit Depth"
-              value={cmToInches(resort.conditions?.snowDepthSummit ?? null)}
-              unit="in"
-            />
-            <HeaderStat
-              icon={<SnowflakeIcon className="w-4 h-4" />}
-              label="Base Depth"
-              value={cmToInches(resort.conditions?.snowDepthBase ?? null)}
-              unit="in"
-            />
+            {snowFallback ? (
+              <HeaderStat
+                icon={<SnowflakeIcon className="w-4 h-4" />}
+                label="Snow Depth"
+                value={snowFallback.depthInches.toString()}
+                unit="in"
+                source={snowFallback.source === "snotel" ? "SNOTEL" : "Open-Meteo"}
+              />
+            ) : (
+              <>
+                <HeaderStat
+                  icon={<SnowflakeIcon className="w-4 h-4" />}
+                  label="Summit Depth"
+                  value={cmToInches(resort.conditions?.snowDepthSummit ?? null)}
+                  unit="in"
+                />
+                <HeaderStat
+                  icon={<SnowflakeIcon className="w-4 h-4" />}
+                  label="Base Depth"
+                  value={cmToInches(resort.conditions?.snowDepthBase ?? null)}
+                  unit="in"
+                />
+              </>
+            )}
             <HeaderStat
               icon={<SnowflakeIcon className="w-4 h-4" />}
               label="24hr Snow"
@@ -451,7 +479,8 @@ function HeaderStat({
   value,
   unit,
   subtext,
-  highlight = false
+  highlight = false,
+  source,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -459,6 +488,7 @@ function HeaderStat({
   unit?: string;
   subtext?: string;
   highlight?: boolean;
+  source?: string;
 }) {
   return (
     <div className={`p-3 rounded-lg ${highlight ? "bg-ice-500/20 border border-ice-500/30" : "bg-snow-900/50"}`}>
@@ -471,6 +501,9 @@ function HeaderStat({
         {unit && value !== "--" && <span className="text-xs text-snow-500">{unit}</span>}
         {subtext && value !== "--" && <span className="text-xs text-snow-500">{subtext}</span>}
       </div>
+      {source && value !== "--" && (
+        <div className="text-[10px] text-snow-500 mt-0.5">via {source}</div>
+      )}
     </div>
   );
 }

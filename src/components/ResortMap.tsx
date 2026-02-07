@@ -18,6 +18,8 @@ interface Resort {
   snowDepthSummit: number | null;
   isOpen: number | null;
   conditions: string | null;
+  fallbackDepthInches: number | null;
+  fallbackSource: string | null;
 }
 
 // Convert cm to inches
@@ -26,55 +28,78 @@ function cmToInches(cm: number | null): string {
   return Math.round(cm / 2.54).toString();
 }
 
-// Most popular US ski resorts (highlighted in purple)
-const POPULAR_RESORTS = new Set([
-  "vail", "park-city", "breckenridge", "aspen-snowmass", "aspen-mountain",
-  "aspen-highlands", "buttermilk", "snowmass", "mammoth-mountain",
-  "telluride", "steamboat", "jackson-hole", "big-sky", "deer-valley",
-  "palisades-tahoe", "squaw-valley", "heavenly", "northstar",
-  "killington", "stowe", "whistler-blackcomb", "copper-mountain",
-  "keystone", "winter-park", "beaver-creek", "alta", "snowbird",
-  "sun-valley", "taos", "big-bear", "mount-bachelor", "crystal-mountain",
-]);
+// Get the best snow depth in inches for a resort
+function getResortDepthInches(resort: Resort): number | null {
+  // Prefer fallbackDepthInches (from SNOTEL/Open-Meteo sync)
+  if (resort.fallbackDepthInches != null && resort.fallbackDepthInches > 0) {
+    return resort.fallbackDepthInches;
+  }
+  // Fall back to scraped summit depth (cm → inches)
+  if (resort.snowDepthSummit != null && resort.snowDepthSummit > 0) {
+    return Math.round(resort.snowDepthSummit / 2.54);
+  }
+  return null;
+}
 
-// Simple dot marker for individual resorts (ice blue)
-const markerIcon = L.divIcon({
-  html: `<div style="
-    width: 10px;
-    height: 10px;
-    background: radial-gradient(circle, rgba(56, 232, 255, 1) 0%, rgba(56, 232, 255, 0.6) 50%, rgba(56, 232, 255, 0) 100%);
-    border-radius: 50%;
-    filter: blur(0.5px);
-  "></div>`,
-  className: "dot-marker",
-  iconSize: L.point(10, 10),
-  iconAnchor: L.point(5, 5),
-  popupAnchor: [0, -5],
-});
+// Snow depth color gradient: cyan-blue → deep purple via HSL interpolation
+// null/0 → gray, 1-24" → cyan, 25-72" → blue-purple, 73"+ → deep purple
+function getSnowDepthColor(depthInches: number | null): string {
+  if (depthInches == null || depthInches <= 0) {
+    return "150, 150, 150"; // muted gray
+  }
 
-// Purple dot marker for popular resorts
-const popularMarkerIcon = L.divIcon({
-  html: `<div style="
-    width: 12px;
-    height: 12px;
-    background: radial-gradient(circle, rgba(168, 85, 247, 1) 0%, rgba(168, 85, 247, 0.6) 50%, rgba(168, 85, 247, 0) 100%);
-    border-radius: 50%;
-    filter: blur(0.5px);
-  "></div>`,
-  className: "dot-marker popular",
-  iconSize: L.point(12, 12),
-  iconAnchor: L.point(6, 6),
-  popupAnchor: [0, -6],
-});
+  // Clamp to range for interpolation
+  const minDepth = 1;
+  const maxDepth = 120;
+  const clamped = Math.min(Math.max(depthInches, minDepth), maxDepth);
 
-// Cluster dot - size scales with count
-function createClusterIcon(count: number, hasPopular: boolean = false) {
+  // HSL interpolation: hue 185 (cyan) → 275 (deep purple)
+  const t = (clamped - minDepth) / (maxDepth - minDepth);
+  const hue = 185 + t * 90; // 185 → 275
+  const saturation = 80 + t * 10; // 80% → 90%
+  const lightness = 60 - t * 15; // 60% → 45%
+
+  // Convert HSL to RGB
+  const h = hue / 360;
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const a2 = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h * 12) % 12;
+    return l - a2 * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+  };
+  const r = Math.round(f(0) * 255);
+  const g = Math.round(f(8) * 255);
+  const b = Math.round(f(4) * 255);
+
+  return `${r}, ${g}, ${b}`;
+}
+
+// Create a dot icon with a given color
+function createDotIcon(color: string, size: number = 10) {
+  return L.divIcon({
+    html: `<div style="
+      width: ${size}px;
+      height: ${size}px;
+      background: radial-gradient(circle, rgba(${color}, 1) 0%, rgba(${color}, 0.6) 50%, rgba(${color}, 0) 100%);
+      border-radius: 50%;
+      filter: blur(0.5px);
+    "></div>`,
+    className: "dot-marker",
+    iconSize: L.point(size, size),
+    iconAnchor: L.point(size / 2, size / 2),
+    popupAnchor: [0, -size / 2],
+  });
+}
+
+// Cluster dot - size scales with count, color based on average depth
+function createClusterIcon(count: number, avgDepth: number | null) {
   const minSize = 14;
   const maxSize = 28;
   const scale = Math.min(1, Math.log(count) / Math.log(50));
   const size = Math.round(minSize + (maxSize - minSize) * scale);
 
-  const color = hasPopular ? "168, 85, 247" : "56, 232, 255";
+  const color = getSnowDepthColor(avgDepth);
 
   return L.divIcon({
     html: `<div style="
@@ -216,36 +241,66 @@ function getUniqueStates(resorts: Resort[]): string[] {
   return Array.from(states).sort();
 }
 
+// Compute average depth for a cluster of resorts
+function getClusterAvgDepth(resorts: Resort[]): number | null {
+  let sum = 0;
+  let count = 0;
+  for (const r of resorts) {
+    const d = getResortDepthInches(r);
+    if (d != null) {
+      sum += d;
+      count++;
+    }
+  }
+  return count > 0 ? Math.round(sum / count) : null;
+}
+
 // Cluster marker that zooms in on click
 function ClusterMarker({
   position,
   resorts,
-  hasPopular,
 }: {
   position: [number, number];
   resorts: Resort[];
-  hasPopular: boolean;
 }) {
   const map = useMap();
+  const avgDepth = getClusterAvgDepth(resorts);
 
   const handleClick = useCallback(() => {
-    // Calculate bounds that contain all resorts in the cluster
     const lats = resorts.map((r) => parseFloat(r.latitude!));
     const lngs = resorts.map((r) => parseFloat(r.longitude!));
     const bounds = L.latLngBounds(
       [Math.min(...lats), Math.min(...lngs)],
       [Math.max(...lats), Math.max(...lngs)]
     );
-    // Zoom to fit the cluster with some padding
     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 });
   }, [map, resorts]);
 
   return (
     <Marker
       position={position}
-      icon={createClusterIcon(resorts.length, hasPopular)}
+      icon={createClusterIcon(resorts.length, avgDepth)}
       eventHandlers={{ click: handleClick }}
     />
+  );
+}
+
+// Snow depth legend gradient bar
+function SnowDepthLegend() {
+  return (
+    <div className="absolute bottom-6 left-4 z-[1000] bg-snow-900/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-snow-700">
+      <div className="text-[10px] text-snow-400 mb-1">Snow Depth</div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-snow-500">0&quot;</span>
+        <div
+          className="w-24 h-2 rounded-full"
+          style={{
+            background: "linear-gradient(to right, rgb(150,150,150), rgb(56,232,255), rgb(100,130,255), rgb(128,40,200))",
+          }}
+        />
+        <span className="text-[10px] text-snow-500">120&quot;+</span>
+      </div>
+    </div>
   );
 }
 
@@ -339,7 +394,8 @@ export default function ResortMap() {
           if (item.type === "marker") {
             const resort = item.resort;
             if (!resort.latitude || !resort.longitude) return null;
-            const isPopular = POPULAR_RESORTS.has(resort.slug);
+            const depthInches = getResortDepthInches(resort);
+            const color = getSnowDepthColor(depthInches);
             return (
               <Marker
                 key={resort.id}
@@ -347,7 +403,7 @@ export default function ResortMap() {
                   parseFloat(resort.latitude),
                   parseFloat(resort.longitude),
                 ]}
-                icon={isPopular ? popularMarkerIcon : markerIcon}
+                icon={createDotIcon(color)}
               >
                 <Popup className="resort-popup">
                   <div className="p-2 min-w-[180px]">
@@ -361,16 +417,21 @@ export default function ResortMap() {
                       {resort.isOpen !== null && (
                         <div className="flex items-center gap-1">
                           <span className={resort.isOpen ? "text-green-600" : "text-red-500"}>
-                            {resort.isOpen ? "● Open" : "● Closed"}
+                            {resort.isOpen ? "\u25CF Open" : "\u25CF Closed"}
                           </span>
                           {resort.terrainOpenPct !== null && resort.isOpen === 1 && (
                             <span className="text-snow-500">({resort.terrainOpenPct}% terrain)</span>
                           )}
                         </div>
                       )}
-                      {resort.snowDepthSummit !== null && (
+                      {depthInches != null && (
                         <div className="text-snow-700">
-                          Base: {cmToInches(resort.snowDepthSummit)}&quot; at summit
+                          Snow: {depthInches}&quot;
+                          {resort.fallbackDepthInches != null && resort.fallbackSource && (
+                            <span className="text-snow-500 text-xs ml-1">
+                              (via {resort.fallbackSource === "snotel" ? "SNOTEL" : "Open-Meteo"})
+                            </span>
+                          )}
                         </div>
                       )}
                       {resort.newSnow24h !== null && resort.newSnow24h > 0 && (
@@ -394,18 +455,19 @@ export default function ResortMap() {
               </Marker>
             );
           } else {
-            const hasPopular = item.resorts.some((r) => POPULAR_RESORTS.has(r.slug));
             return (
               <ClusterMarker
                 key={`cluster-${index}`}
                 position={[item.lat, item.lng]}
                 resorts={item.resorts}
-                hasPopular={hasPopular}
               />
             );
           }
         })}
       </MapContainer>
+
+      {/* Snow Depth Legend */}
+      <SnowDepthLegend />
 
       {/* Map Controls */}
       <div className="absolute top-4 right-4 z-[1000] flex gap-2">

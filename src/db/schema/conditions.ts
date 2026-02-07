@@ -90,5 +90,21 @@ export const resortInfo = pgTable("resort_info", {
 export type ResortConditions = typeof resortConditions.$inferSelect;
 export type NewResortConditions = typeof resortConditions.$inferInsert;
 
+// Daily snow depth readings from SNOTEL/Open-Meteo (one row per resort, upserted daily)
+export const snowDepthReadings = pgTable("snow_depth_readings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  resortId: uuid("resort_id")
+    .references(() => resorts.id)
+    .notNull()
+    .unique(),
+  depthInches: integer("depth_inches").notNull(),
+  source: text("source").notNull(), // "snotel" | "open-meteo"
+  sourceDetail: text("source_detail").notNull(), // station name or "Open-Meteo"
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+});
+
 export type ResortInfo = typeof resortInfo.$inferSelect;
 export type NewResortInfo = typeof resortInfo.$inferInsert;
+
+export type SnowDepthReading = typeof snowDepthReadings.$inferSelect;
+export type NewSnowDepthReading = typeof snowDepthReadings.$inferInsert;

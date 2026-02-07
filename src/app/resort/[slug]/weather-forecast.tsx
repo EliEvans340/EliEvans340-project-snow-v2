@@ -156,9 +156,91 @@ export function DailyForecastStrip({ slug }: WeatherForecastProps) {
   );
 }
 
-// Hourly forecast component - renamed from WeatherForecast
+// Multi-model hourly types (from API)
+interface HourlyDataPoint {
+  time: string;
+  tempF: number | null;
+  feelsLikeF: number | null;
+  snowInches: number | null;
+  precipInches: number | null;
+  windMph: number | null;
+  gustMph: number | null;
+  humidityPct: number | null;
+  weatherCode: number | null;
+  conditions: string;
+  freezingLevelFt: number | null;
+}
+
+interface HourlyModelForecast {
+  available: boolean;
+  data: HourlyDataPoint[];
+  error?: string;
+}
+
+interface MultiModelHourlyData {
+  resort: { id: string; name: string; slug: string };
+  models: {
+    gfs: HourlyModelForecast;
+    ecmwf: HourlyModelForecast;
+    hrrr: HourlyModelForecast;
+  };
+  fetchedAt: string;
+}
+
+type ModelKey = "gfs" | "ecmwf" | "hrrr";
+
+const MODEL_TABS: { key: ModelKey; label: string; color: string; subtitle: string }[] = [
+  { key: "hrrr", label: "HRRR", color: "text-green-400 border-green-400", subtitle: "48hr, 3km" },
+  { key: "gfs", label: "GFS", color: "text-cyan-400 border-cyan-400", subtitle: "16-day, ~25km" },
+  { key: "ecmwf", label: "ECMWF", color: "text-purple-400 border-purple-400", subtitle: "15-day, ~9km" },
+];
+
+// Hook to fetch multi-model hourly data
+function useMultiModelHourly(slug: string) {
+  const [data, setData] = useState<MultiModelHourlyData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/hourly-forecast/${slug}`);
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || "Failed to fetch hourly forecast");
+        }
+        const result = await res.json();
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load forecast");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [slug]);
+
+  return { data, loading, error };
+}
+
+// Hourly forecast component with multi-model tabs
 export function HourlyForecast({ slug }: WeatherForecastProps) {
-  const { data, loading, error } = useForecast(slug);
+  const { data, loading, error } = useMultiModelHourly(slug);
+  const [activeModel, setActiveModel] = useState<ModelKey>("hrrr");
+
+  // When data loads, default to HRRR if available, otherwise first available model
+  useEffect(() => {
+    if (!data) return;
+    if (data.models.hrrr.available) {
+      setActiveModel("hrrr");
+    } else if (data.models.gfs.available) {
+      setActiveModel("gfs");
+    } else if (data.models.ecmwf.available) {
+      setActiveModel("ecmwf");
+    }
+  }, [data]);
 
   return (
     <section className="bg-snow-800 rounded-lg border border-snow-700">
@@ -167,6 +249,38 @@ export function HourlyForecast({ slug }: WeatherForecastProps) {
         <h2 className="text-lg font-semibold text-ice-400">By the Hour</h2>
       </div>
 
+      {/* Model tabs */}
+      {!loading && !error && data && (
+        <div className="px-4 pt-3 flex gap-2">
+          {MODEL_TABS.map((tab) => {
+            const model = data.models[tab.key];
+            const isActive = activeModel === tab.key;
+            const isAvailable = model.available;
+
+            return (
+              <button
+                key={tab.key}
+                onClick={() => isAvailable && setActiveModel(tab.key)}
+                disabled={!isAvailable}
+                className={`px-3 py-1.5 rounded-t-lg text-sm font-medium border-b-2 transition-colors ${
+                  isActive
+                    ? `${tab.color} bg-snow-900/50`
+                    : isAvailable
+                    ? "text-snow-400 border-transparent hover:text-snow-200 hover:bg-snow-900/30"
+                    : "text-snow-600 border-transparent cursor-not-allowed"
+                }`}
+                title={!isAvailable ? `${tab.label} unavailable` : tab.subtitle}
+              >
+                {tab.label}
+                {isActive && (
+                  <span className="ml-1.5 text-xs text-snow-500 font-normal">{tab.subtitle}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="p-4">
         {loading && <LoadingSkeleton />}
         {error && (
@@ -174,7 +288,12 @@ export function HourlyForecast({ slug }: WeatherForecastProps) {
             <p className="text-red-400 text-sm">{error}</p>
           </div>
         )}
-        {!loading && !error && data && <HourlyView forecasts={data.hourly} />}
+        {!loading && !error && data && (
+          <MultiModelHourlyView
+            forecasts={data.models[activeModel].data}
+            fetchedAt={data.fetchedAt}
+          />
+        )}
       </div>
     </section>
   );
@@ -200,55 +319,64 @@ function LoadingSkeleton() {
   );
 }
 
-function HourlyView({ forecasts }: { forecasts: HourlyForecast[] }) {
-  const next24Hours = forecasts.slice(0, 24);
-
-  if (next24Hours.length === 0) {
+function MultiModelHourlyView({
+  forecasts,
+  fetchedAt,
+}: {
+  forecasts: HourlyDataPoint[];
+  fetchedAt: string;
+}) {
+  if (forecasts.length === 0) {
     return <p className="text-snow-400 text-center py-4">No hourly forecast data available</p>;
   }
 
   return (
-    <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
-      {next24Hours.map((forecast) => {
-        const time = new Date(forecast.forecastTime);
-        const temp = forecast.tempF ? Math.round(parseFloat(forecast.tempF)) : "--";
-        const snow = forecast.snowInches ? parseFloat(forecast.snowInches).toFixed(1) : "0";
-        const wind = forecast.windMph ? Math.round(parseFloat(forecast.windMph)) : "--";
-        const conditions = forecast.conditions || "Unknown";
+    <>
+      <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-2">
+        {forecasts.map((point, i) => {
+          const time = new Date(point.time);
+          const temp = point.tempF != null ? Math.round(point.tempF) : "--";
+          const snow = point.snowInches != null ? point.snowInches.toFixed(1) : "0";
+          const wind = point.windMph != null ? Math.round(point.windMph) : "--";
+          const conditions = point.conditions || "Unknown";
 
-        return (
-          <div
-            key={forecast.id}
-            className="flex items-center gap-3 p-2 rounded-lg bg-snow-900/30 hover:bg-snow-900/50 transition-colors"
-          >
-            <div className="w-16 text-sm text-snow-400">
-              {time.toLocaleTimeString([], { hour: "numeric", hour12: true })}
-            </div>
-            <div className="w-10 h-10 flex items-center justify-center">
-              <WeatherIcon conditions={conditions} size="md" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-lg font-semibold text-ice-300">{temp}°F</span>
-                {parseFloat(snow) > 0 && (
-                  <span className="text-sm text-ice-400 flex items-center gap-1">
-                    <SnowflakeIcon className="w-3 h-3" />
-                    {snow}"
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-3 p-2 rounded-lg bg-snow-900/30 hover:bg-snow-900/50 transition-colors"
+            >
+              <div className="w-16 text-sm text-snow-400">
+                {time.toLocaleTimeString([], { hour: "numeric", hour12: true })}
+              </div>
+              <div className="w-10 h-10 flex items-center justify-center">
+                <WeatherIcon conditions={conditions} size="md" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-lg font-semibold text-ice-300">{temp}°F</span>
+                  {parseFloat(snow) > 0 && (
+                    <span className="text-sm text-ice-400 flex items-center gap-1">
+                      <SnowflakeIcon className="w-3 h-3" />
+                      {snow}&quot;
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-snow-400 flex items-center gap-2">
+                  <span>{conditions}</span>
+                  <span className="flex items-center gap-1">
+                    <WindIcon className="w-3 h-3" />
+                    {wind} mph
                   </span>
-                )}
-              </div>
-              <div className="text-xs text-snow-400 flex items-center gap-2">
-                <span>{conditions}</span>
-                <span className="flex items-center gap-1">
-                  <WindIcon className="w-3 h-3" />
-                  {wind} mph
-                </span>
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 text-xs text-snow-500">
+        Updated {new Date(fetchedAt).toLocaleTimeString()}
+      </div>
+    </>
   );
 }
 

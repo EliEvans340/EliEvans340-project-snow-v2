@@ -9,7 +9,7 @@ interface UnsplashPhoto {
   id: string;
   width: number;
   height: number;
-  urls: { regular: string; small: string };
+  urls: { raw: string; full: string; regular: string; small: string };
   blur_hash: string | null;
   alt_description: string | null;
   user: {
@@ -111,7 +111,7 @@ export async function getResortPhoto(
     await db.insert(resortPhotos).values({
       resortId,
       unsplashId: photo.id,
-      imageUrl: photo.urls.regular,
+      imageUrl: photo.urls.full,
       blurHash: photo.blur_hash,
       altDescription: photo.alt_description,
       photographerName: photo.user.name,
@@ -121,7 +121,7 @@ export async function getResortPhoto(
     });
 
     return {
-      imageUrl: photo.urls.regular,
+      imageUrl: photo.urls.full,
       blurHash: photo.blur_hash,
       altDescription: photo.alt_description,
       photographerName: photo.user.name,
