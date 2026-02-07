@@ -12,18 +12,26 @@ interface HistoricalWeatherResponse {
   };
 }
 
+interface CumulativePoint {
+  dayOfSeason: number;
+  cumulativeInches: number;
+}
+
 interface SeasonSnowfallData {
   currentSeason: {
     startDate: string;
     endDate: string;
-    totalSnowfall: number; // in inches
+    totalSnowfall: number;
     daysIntoSeason: number;
+    daily: CumulativePoint[];
   };
   lastSeason: {
     startDate: string;
     endDate: string;
-    totalSnowfall: number; // in inches (at same point in season)
-    fullSeasonTotal: number; // in inches (full season)
+    totalSnowfall: number;
+    fullSeasonTotal: number;
+    dailyToDate: CumulativePoint[];
+    dailyFull: CumulativePoint[];
   };
   percentOfLastSeason: number;
 }
@@ -40,17 +48,20 @@ function getSeasonDates(year: number): { start: Date; end: Date } {
 function getCurrentSeasonYear(): number {
   const now = new Date();
   const month = now.getMonth();
-  // If we're in Jan-Oct, the season started last year
-  // If we're in Nov-Dec, the season started this year
   return month >= 10 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
-async function fetchHistoricalSnowfall(
+function formatDate(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+// Fetch daily snowfall data from Open-Meteo archive
+async function fetchDailySnowfallData(
   latitude: number,
   longitude: number,
   startDate: string,
   endDate: string
-): Promise<number> {
+): Promise<{ date: string; snowfallCm: number }[]> {
   const url = new URL(OPEN_METEO_ARCHIVE_URL);
   url.searchParams.set("latitude", latitude.toString());
   url.searchParams.set("longitude", longitude.toString());
@@ -61,7 +72,7 @@ async function fetchHistoricalSnowfall(
 
   const response = await fetch(url.toString(), {
     headers: { Accept: "application/json" },
-    next: { revalidate: 3600 }, // Cache for 1 hour
+    next: { revalidate: 3600 },
   });
 
   if (!response.ok) {
@@ -70,15 +81,29 @@ async function fetchHistoricalSnowfall(
 
   const data: HistoricalWeatherResponse = await response.json();
 
-  // Sum up all daily snowfall (Open-Meteo returns snowfall in cm)
-  const totalCm = data.daily.snowfall_sum.reduce((sum, val) => sum + (val || 0), 0);
-
-  // Convert cm to inches
-  return totalCm / 2.54;
+  return data.daily.time.map((date, i) => ({
+    date,
+    snowfallCm: data.daily.snowfall_sum[i] || 0,
+  }));
 }
 
-function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
+// Convert daily snowfall array to cumulative points indexed by day-of-season
+function toCumulativePoints(
+  dailyData: { date: string; snowfallCm: number }[],
+  seasonStart: Date
+): CumulativePoint[] {
+  let cumulative = 0;
+  return dailyData.map((day) => {
+    cumulative += day.snowfallCm / 2.54; // cm to inches
+    const dayDate = new Date(day.date + "T00:00:00");
+    const dayOfSeason = Math.round(
+      (dayDate.getTime() - seasonStart.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return {
+      dayOfSeason,
+      cumulativeInches: Math.round(cumulative * 10) / 10,
+    };
+  });
 }
 
 export async function GET(
@@ -90,7 +115,6 @@ export async function GET(
   try {
     const db = getDb();
 
-    // Get resort details
     const [resort] = await db
       .select()
       .from(resorts)
@@ -118,36 +142,33 @@ export async function GET(
     const currentSeason = getSeasonDates(currentSeasonYear);
     const lastSeason = getSeasonDates(lastSeasonYear);
 
-    // Calculate days into the current season
     const seasonStart = currentSeason.start;
     const daysIntoSeason = Math.max(
       0,
       Math.floor((today.getTime() - seasonStart.getTime()) / (1000 * 60 * 60 * 24))
     );
 
-    // Calculate the equivalent date in last season
     const lastSeasonEquivalentEnd = new Date(lastSeason.start);
     lastSeasonEquivalentEnd.setDate(lastSeasonEquivalentEnd.getDate() + daysIntoSeason);
 
-    // Ensure we don't query future dates
     const currentSeasonEnd = today < currentSeason.end ? today : currentSeason.end;
 
-    // Fetch snowfall data in parallel
-    const [currentSnowfall, lastSeasonToDateSnowfall, lastSeasonFullSnowfall] =
+    // Fetch all three daily datasets in parallel
+    const [currentDailyData, lastSeasonToDateData, lastSeasonFullData] =
       await Promise.all([
-        fetchHistoricalSnowfall(
+        fetchDailySnowfallData(
           latitude,
           longitude,
           formatDate(currentSeason.start),
           formatDate(currentSeasonEnd)
         ),
-        fetchHistoricalSnowfall(
+        fetchDailySnowfallData(
           latitude,
           longitude,
           formatDate(lastSeason.start),
           formatDate(lastSeasonEquivalentEnd)
         ),
-        fetchHistoricalSnowfall(
+        fetchDailySnowfallData(
           latitude,
           longitude,
           formatDate(lastSeason.start),
@@ -155,23 +176,42 @@ export async function GET(
         ),
       ]);
 
+    // Convert to cumulative points
+    const currentDaily = toCumulativePoints(currentDailyData, currentSeason.start);
+    const lastSeasonToDateDaily = toCumulativePoints(lastSeasonToDateData, lastSeason.start);
+    const lastSeasonFullDaily = toCumulativePoints(lastSeasonFullData, lastSeason.start);
+
+    // Derive totals from cumulative arrays
+    const currentTotal = currentDaily.length > 0
+      ? currentDaily[currentDaily.length - 1].cumulativeInches
+      : 0;
+    const lastSeasonToDateTotal = lastSeasonToDateDaily.length > 0
+      ? lastSeasonToDateDaily[lastSeasonToDateDaily.length - 1].cumulativeInches
+      : 0;
+    const lastSeasonFullTotal = lastSeasonFullDaily.length > 0
+      ? lastSeasonFullDaily[lastSeasonFullDaily.length - 1].cumulativeInches
+      : 0;
+
     const percentOfLastSeason =
-      lastSeasonToDateSnowfall > 0
-        ? Math.round((currentSnowfall / lastSeasonToDateSnowfall) * 100)
+      lastSeasonToDateTotal > 0
+        ? Math.round((currentTotal / lastSeasonToDateTotal) * 100)
         : 0;
 
     const responseData: SeasonSnowfallData = {
       currentSeason: {
         startDate: formatDate(currentSeason.start),
         endDate: formatDate(currentSeasonEnd),
-        totalSnowfall: Math.round(currentSnowfall),
+        totalSnowfall: Math.round(currentTotal),
         daysIntoSeason,
+        daily: currentDaily,
       },
       lastSeason: {
         startDate: formatDate(lastSeason.start),
         endDate: formatDate(lastSeason.end),
-        totalSnowfall: Math.round(lastSeasonToDateSnowfall),
-        fullSeasonTotal: Math.round(lastSeasonFullSnowfall),
+        totalSnowfall: Math.round(lastSeasonToDateTotal),
+        fullSeasonTotal: Math.round(lastSeasonFullTotal),
+        dailyToDate: lastSeasonToDateDaily,
+        dailyFull: lastSeasonFullDaily,
       },
       percentOfLastSeason,
     };
