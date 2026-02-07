@@ -118,3 +118,45 @@ input[type="range"].accent-ice-500::-moz-range-thumb {
 .leaflet-control-attribution a {
   color: #38e8ff !important;
 }
+
+/* ─── Weather Timeline Animations ─────────────────────── */
+
+/* Snow bar shimmer animation */
+@keyframes snow-shimmer {
+  0% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.3);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+.snow-bar-shimmer rect {
+  animation: snow-shimmer 2.5s ease-in-out infinite;
+}
+
+/* "Now" reference line glow */
+.now-glow-line line {
+  filter: drop-shadow(0 0 4px rgba(56, 232, 255, 0.6))
+          drop-shadow(0 0 8px rgba(56, 232, 255, 0.3));
+}
+
+/* Now line pulsing glow */
+@keyframes now-pulse {
+  0%, 100% {
+    opacity: 0.8;
+    filter: drop-shadow(0 0 4px rgba(56, 232, 255, 0.5));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(56, 232, 255, 0.8))
+            drop-shadow(0 0 12px rgba(56, 232, 255, 0.4));
+  }
+}
+
+.now-glow-line {
+  animation: now-pulse 3s ease-in-out infinite;
+}

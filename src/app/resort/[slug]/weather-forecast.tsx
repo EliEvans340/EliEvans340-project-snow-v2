@@ -1,6 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+  ComposedChart,
+  Bar,
+  Line,
+} from "recharts";
+
+// ─── Interfaces ───────────────────────────────────────────────────
 
 interface HourlyForecast {
   id: string;
@@ -36,7 +51,71 @@ interface WeatherForecastProps {
   slug: string;
 }
 
-// Hook to fetch forecast data - shared between components
+interface HourlyDataPoint {
+  time: string;
+  tempF: number | null;
+  feelsLikeF: number | null;
+  snowInches: number | null;
+  precipInches: number | null;
+  windMph: number | null;
+  gustMph: number | null;
+  humidityPct: number | null;
+  weatherCode: number | null;
+  conditions: string;
+  freezingLevelFt: number | null;
+}
+
+interface HourlyModelForecast {
+  available: boolean;
+  data: HourlyDataPoint[];
+  error?: string;
+}
+
+interface MultiModelHourlyData {
+  resort: { id: string; name: string; slug: string };
+  models: {
+    gfs: HourlyModelForecast;
+    ecmwf: HourlyModelForecast;
+    hrrr: HourlyModelForecast;
+  };
+  fetchedAt: string;
+}
+
+type ModelKey = "gfs" | "ecmwf" | "hrrr";
+
+// ─── Timeline data types ──────────────────────────────────────────
+
+interface TimelineRow {
+  index: number;
+  time: Date;
+  label: string;
+  isNow: boolean;
+  isNight: boolean;
+  isDayBoundary: boolean;
+  dayLabel: string;
+  tempF: number | null;
+  feelsLikeF: number | null;
+  snowInches: number;
+  cumulativeSnow: number;
+  windMph: number | null;
+  gustMph: number | null;
+  humidityPct: number | null;
+  conditions: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────
+
+const MODEL_TABS: { key: ModelKey; label: string; color: string; subtitle: string }[] = [
+  { key: "hrrr", label: "HRRR", color: "text-green-400 border-green-400", subtitle: "48hr, 3km" },
+  { key: "gfs", label: "GFS", color: "text-cyan-400 border-cyan-400", subtitle: "16-day, ~25km" },
+  { key: "ecmwf", label: "ECMWF", color: "text-purple-400 border-purple-400", subtitle: "15-day, ~9km" },
+];
+
+const ROW_HEIGHT = 36;
+const SYNC_ID = "hourly-timeline";
+
+// ─── Hooks ────────────────────────────────────────────────────────
+
 function useForecast(slug: string) {
   const [data, setData] = useState<ForecastData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,7 +145,93 @@ function useForecast(slug: string) {
   return { data, loading, error };
 }
 
-// Daily forecast horizontal strip - card style for main content
+function useMultiModelHourly(slug: string) {
+  const [data, setData] = useState<MultiModelHourlyData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/hourly-forecast/${slug}`);
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || "Failed to fetch hourly forecast");
+        }
+        const result = await res.json();
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load forecast");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [slug]);
+
+  return { data, loading, error };
+}
+
+function useTimelineData(forecasts: HourlyDataPoint[]): TimelineRow[] {
+  return useMemo(() => {
+    if (!forecasts.length) return [];
+
+    const now = new Date();
+    let cumulativeSnow = 0;
+    let prevDate = "";
+
+    return forecasts.map((point, index) => {
+      const time = new Date(point.time);
+      const hour = time.getHours();
+      const isNight = hour < 6 || hour >= 20;
+      const snow = point.snowInches != null ? point.snowInches : 0;
+      cumulativeSnow += snow;
+
+      // Check if this is first entry of a new day
+      const dateStr = time.toLocaleDateString();
+      const isDayBoundary = dateStr !== prevDate;
+      prevDate = dateStr;
+
+      // "NOW" if this is the closest hour to current time
+      const diffMs = Math.abs(time.getTime() - now.getTime());
+      const isNow = index === 0 || diffMs < 30 * 60 * 1000;
+
+      // Time label
+      let label: string;
+      if (isNow && index === 0) {
+        label = "NOW";
+      } else {
+        label = time.toLocaleTimeString([], { hour: "numeric", hour12: true });
+      }
+
+      // Day label for boundary rows
+      const dayLabel = time.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+
+      return {
+        index,
+        time,
+        label,
+        isNow: isNow && index === 0,
+        isNight,
+        isDayBoundary: isDayBoundary && index > 0,
+        dayLabel,
+        tempF: point.tempF,
+        feelsLikeF: point.feelsLikeF,
+        snowInches: snow,
+        cumulativeSnow: Math.round(cumulativeSnow * 10) / 10,
+        windMph: point.windMph,
+        gustMph: point.gustMph,
+        humidityPct: point.humidityPct,
+        conditions: point.conditions || "Unknown",
+      };
+    });
+  }, [forecasts]);
+}
+
+// ─── Daily Forecast Strip (unchanged) ─────────────────────────────
+
 export function DailyForecastStrip({ slug }: WeatherForecastProps) {
   const { data, loading, error } = useForecast(slug);
 
@@ -135,7 +300,7 @@ export function DailyForecastStrip({ slug }: WeatherForecastProps) {
                   {snow > 0 && (
                     <div className="mt-1 text-xs text-ice-400 flex items-center justify-center gap-1">
                       <SnowflakeIcon className="w-3 h-3" />
-                      {snow.toFixed(1)}"
+                      {snow.toFixed(1)}&quot;
                     </div>
                   )}
                 </div>
@@ -156,81 +321,12 @@ export function DailyForecastStrip({ slug }: WeatherForecastProps) {
   );
 }
 
-// Multi-model hourly types (from API)
-interface HourlyDataPoint {
-  time: string;
-  tempF: number | null;
-  feelsLikeF: number | null;
-  snowInches: number | null;
-  precipInches: number | null;
-  windMph: number | null;
-  gustMph: number | null;
-  humidityPct: number | null;
-  weatherCode: number | null;
-  conditions: string;
-  freezingLevelFt: number | null;
-}
+// ─── Hourly Forecast (main export) ────────────────────────────────
 
-interface HourlyModelForecast {
-  available: boolean;
-  data: HourlyDataPoint[];
-  error?: string;
-}
-
-interface MultiModelHourlyData {
-  resort: { id: string; name: string; slug: string };
-  models: {
-    gfs: HourlyModelForecast;
-    ecmwf: HourlyModelForecast;
-    hrrr: HourlyModelForecast;
-  };
-  fetchedAt: string;
-}
-
-type ModelKey = "gfs" | "ecmwf" | "hrrr";
-
-const MODEL_TABS: { key: ModelKey; label: string; color: string; subtitle: string }[] = [
-  { key: "hrrr", label: "HRRR", color: "text-green-400 border-green-400", subtitle: "48hr, 3km" },
-  { key: "gfs", label: "GFS", color: "text-cyan-400 border-cyan-400", subtitle: "16-day, ~25km" },
-  { key: "ecmwf", label: "ECMWF", color: "text-purple-400 border-purple-400", subtitle: "15-day, ~9km" },
-];
-
-// Hook to fetch multi-model hourly data
-function useMultiModelHourly(slug: string) {
-  const [data, setData] = useState<MultiModelHourlyData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await fetch(`/api/hourly-forecast/${slug}`);
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || "Failed to fetch hourly forecast");
-        }
-        const result = await res.json();
-        setData(result);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load forecast");
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [slug]);
-
-  return { data, loading, error };
-}
-
-// Hourly forecast component with multi-model tabs
 export function HourlyForecast({ slug }: WeatherForecastProps) {
   const { data, loading, error } = useMultiModelHourly(slug);
   const [activeModel, setActiveModel] = useState<ModelKey>("hrrr");
 
-  // When data loads, default to HRRR if available, otherwise first available model
   useEffect(() => {
     if (!data) return;
     if (data.models.hrrr.available) {
@@ -289,7 +385,7 @@ export function HourlyForecast({ slug }: WeatherForecastProps) {
           </div>
         )}
         {!loading && !error && data && (
-          <MultiModelHourlyView
+          <HourlyTimelineChart
             forecasts={data.models[activeModel].data}
             fetchedAt={data.fetchedAt}
           />
@@ -299,8 +395,689 @@ export function HourlyForecast({ slug }: WeatherForecastProps) {
   );
 }
 
-// Keep the old export name for backwards compatibility
 export const WeatherForecast = HourlyForecast;
+
+// ─── Timeline Chart (replaces MultiModelHourlyView) ──────────────
+
+function HourlyTimelineChart({
+  forecasts,
+  fetchedAt,
+}: {
+  forecasts: HourlyDataPoint[];
+  fetchedAt: string;
+}) {
+  const rows = useTimelineData(forecasts);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const timeColRef = useRef<HTMLDivElement>(null);
+
+  // Sync scroll between time column and chart panels
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    if (timeColRef.current && e.currentTarget !== timeColRef.current) {
+      timeColRef.current.scrollTop = scrollTop;
+    }
+    if (scrollRef.current && e.currentTarget !== scrollRef.current) {
+      scrollRef.current.scrollTop = scrollTop;
+    }
+  }, []);
+
+  if (forecasts.length === 0) {
+    return <p className="text-snow-400 text-center py-4">No hourly forecast data available</p>;
+  }
+
+  // Compute chart data for recharts (needs index as Y axis)
+  const chartData = rows.map((row) => ({
+    index: row.index,
+    label: row.label,
+    tempF: row.tempF,
+    feelsLikeF: row.feelsLikeF,
+    snowInches: row.snowInches > 0 ? row.snowInches : null,
+    cumulativeSnow: row.cumulativeSnow,
+    windMph: row.windMph,
+    gustMph: row.gustMph,
+    isNight: row.isNight,
+    isNow: row.isNow,
+  }));
+
+  // Compute domains
+  const temps = rows.filter((r) => r.tempF != null).map((r) => r.tempF!);
+  const feelsTemps = rows.filter((r) => r.feelsLikeF != null).map((r) => r.feelsLikeF!);
+  const allTemps = [...temps, ...feelsTemps];
+  const tempMin = allTemps.length ? Math.floor(Math.min(...allTemps) / 5) * 5 - 5 : 0;
+  const tempMax = allTemps.length ? Math.ceil(Math.max(...allTemps) / 5) * 5 + 5 : 50;
+
+  const snowVals = rows.map((r) => r.snowInches).filter((v) => v > 0);
+  const cumSnowMax = rows.length ? Math.max(...rows.map((r) => r.cumulativeSnow), 0.5) : 1;
+  const snowMax = snowVals.length ? Math.max(Math.ceil(Math.max(...snowVals) * 2) / 2, 0.5) : 0.5;
+
+  const winds = rows.filter((r) => r.windMph != null).map((r) => r.windMph!);
+  const gusts = rows.filter((r) => r.gustMph != null).map((r) => r.gustMph!);
+  const windMax = Math.max(...winds, ...gusts, 10);
+  const windCeil = Math.ceil(windMax / 10) * 10 + 5;
+
+  const totalHeight = rows.length * ROW_HEIGHT;
+  const nowIndex = rows.findIndex((r) => r.isNow);
+
+  // Night region boundaries for reference areas
+  const nightRegions = getNightRegions(rows);
+
+  return (
+    <>
+      {/* Desktop layout */}
+      <div className="hidden lg:block">
+        <div className="flex gap-0 overflow-hidden rounded-lg border border-snow-700">
+          {/* Time + Conditions Column */}
+          <div
+            ref={timeColRef}
+            onScroll={handleScroll}
+            className="w-[120px] flex-shrink-0 overflow-y-auto scrollbar-hide border-r border-snow-700"
+            style={{ maxHeight: 480 }}
+          >
+            <TimeConditionsColumn
+              rows={rows}
+              hoveredIndex={hoveredIndex}
+              onHover={setHoveredIndex}
+            />
+          </div>
+
+          {/* Chart panels */}
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide"
+            style={{ maxHeight: 480 }}
+          >
+            <div style={{ height: totalHeight, minHeight: totalHeight }} className="flex">
+              {/* Temperature Panel */}
+              <div className="flex-1 min-w-0 border-r border-snow-700/50 relative">
+                <div className="sticky top-0 z-10 bg-snow-800/95 backdrop-blur-sm border-b border-snow-700/50 px-2 py-1">
+                  <span className="text-xs font-medium text-snow-400">Temperature</span>
+                </div>
+                <div style={{ height: totalHeight }}>
+                  <ResponsiveContainer width="100%" height={totalHeight}>
+                    <AreaChart
+                      data={chartData}
+                      layout="vertical"
+                      syncId={SYNC_ID}
+                      margin={{ top: 0, right: 12, bottom: 0, left: 0 }}
+                      onMouseMove={(state) => {
+                        if (state?.activeTooltipIndex != null) {
+                          setHoveredIndex(Number(state.activeTooltipIndex));
+                        }
+                      }}
+                      onMouseLeave={() => setHoveredIndex(null)}
+                    >
+                      <defs>
+                        <linearGradient id="tempGradient" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#38e8ff" stopOpacity={0.05} />
+                          <stop offset="100%" stopColor="#38e8ff" stopOpacity={0.3} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.3} horizontal={false} />
+                      <XAxis
+                        type="number"
+                        domain={[tempMin, tempMax]}
+                        orientation="top"
+                        tick={{ fill: "#94a3b8", fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        unit="°"
+                        hide
+                      />
+                      <YAxis type="category" dataKey="index" hide />
+                      {/* Night bands */}
+                      {nightRegions.map((region, i) => (
+                        <ReferenceLine
+                          key={`night-${i}`}
+                          y={region.start}
+                          stroke="transparent"
+                        />
+                      ))}
+                      {/* Freezing reference line */}
+                      <ReferenceLine
+                        x={32}
+                        stroke="#60a5fa"
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.5}
+                        label={{ value: "32°F", position: "insideTopRight", fill: "#60a5fa", fontSize: 9 }}
+                      />
+                      {/* Now reference line */}
+                      {nowIndex >= 0 && (
+                        <ReferenceLine
+                          y={nowIndex}
+                          stroke="#38e8ff"
+                          strokeWidth={2}
+                          className="now-glow-line"
+                        />
+                      )}
+                      <Tooltip
+                        content={<CustomTimelineTooltip rows={rows} />}
+                        cursor={{ stroke: "#38e8ff", strokeOpacity: 0.2, strokeWidth: ROW_HEIGHT }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="tempF"
+                        stroke="#38e8ff"
+                        strokeWidth={2}
+                        fill="url(#tempGradient)"
+                        dot={false}
+                        activeDot={{ r: 4, fill: "#38e8ff", stroke: "#0f172a", strokeWidth: 2 }}
+                        isAnimationActive={false}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="feelsLikeF"
+                        stroke="#94a3b8"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 3"
+                        fill="none"
+                        dot={false}
+                        activeDot={{ r: 3, fill: "#94a3b8", stroke: "#0f172a", strokeWidth: 2 }}
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Snow Panel */}
+              <div className="flex-1 min-w-0 border-r border-snow-700/50 relative">
+                <div className="sticky top-0 z-10 bg-snow-800/95 backdrop-blur-sm border-b border-snow-700/50 px-2 py-1">
+                  <span className="text-xs font-medium text-snow-400">Snow</span>
+                </div>
+                <div style={{ height: totalHeight }}>
+                  <ResponsiveContainer width="100%" height={totalHeight}>
+                    <ComposedChart
+                      data={chartData}
+                      layout="vertical"
+                      syncId={SYNC_ID}
+                      margin={{ top: 0, right: 12, bottom: 0, left: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="snowBarGradient" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#38e8ff" stopOpacity={0.2} />
+                          <stop offset="100%" stopColor="#38e8ff" stopOpacity={0.7} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.3} horizontal={false} />
+                      <XAxis
+                        type="number"
+                        domain={[0, snowMax]}
+                        orientation="top"
+                        tick={{ fill: "#94a3b8", fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        unit='"'
+                        hide
+                      />
+                      <YAxis type="category" dataKey="index" hide />
+                      {/* Cumulative snow axis (secondary) */}
+                      <XAxis
+                        type="number"
+                        xAxisId="cumulative"
+                        domain={[0, cumSnowMax]}
+                        orientation="top"
+                        hide
+                      />
+                      {nowIndex >= 0 && (
+                        <ReferenceLine
+                          y={nowIndex}
+                          stroke="#38e8ff"
+                          strokeWidth={2}
+                          className="now-glow-line"
+                        />
+                      )}
+                      <Bar
+                        dataKey="snowInches"
+                        fill="url(#snowBarGradient)"
+                        radius={[0, 3, 3, 0]}
+                        barSize={Math.min(ROW_HEIGHT - 8, 20)}
+                        isAnimationActive={false}
+                        className="snow-bar-shimmer"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="cumulativeSnow"
+                        xAxisId="cumulative"
+                        stroke="#7df2ff"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 3"
+                        dot={false}
+                        activeDot={{ r: 3, fill: "#7df2ff", stroke: "#0f172a", strokeWidth: 2 }}
+                        isAnimationActive={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Wind Panel */}
+              <div className="flex-1 min-w-0 relative">
+                <div className="sticky top-0 z-10 bg-snow-800/95 backdrop-blur-sm border-b border-snow-700/50 px-2 py-1">
+                  <span className="text-xs font-medium text-snow-400">Wind</span>
+                </div>
+                <div style={{ height: totalHeight }}>
+                  <ResponsiveContainer width="100%" height={totalHeight}>
+                    <AreaChart
+                      data={chartData}
+                      layout="vertical"
+                      syncId={SYNC_ID}
+                      margin={{ top: 0, right: 12, bottom: 0, left: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="windGradient" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#94a3b8" stopOpacity={0.05} />
+                          <stop offset="40%" stopColor="#94a3b8" stopOpacity={0.15} />
+                          <stop offset="70%" stopColor="#f59e0b" stopOpacity={0.25} />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity={0.35} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.3} horizontal={false} />
+                      <XAxis
+                        type="number"
+                        domain={[0, windCeil]}
+                        orientation="top"
+                        tick={{ fill: "#94a3b8", fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        unit=" mph"
+                        hide
+                      />
+                      <YAxis type="category" dataKey="index" hide />
+                      {nowIndex >= 0 && (
+                        <ReferenceLine
+                          y={nowIndex}
+                          stroke="#38e8ff"
+                          strokeWidth={2}
+                          className="now-glow-line"
+                        />
+                      )}
+                      <Area
+                        type="monotone"
+                        dataKey="windMph"
+                        stroke="#94a3b8"
+                        strokeWidth={1.5}
+                        fill="url(#windGradient)"
+                        dot={false}
+                        activeDot={{ r: 3, fill: "#94a3b8", stroke: "#0f172a", strokeWidth: 2 }}
+                        isAnimationActive={false}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="gustMph"
+                        stroke="#f59e0b"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 3"
+                        fill="none"
+                        dot={false}
+                        activeDot={{ r: 3, fill: "#f59e0b", stroke: "#0f172a", strokeWidth: 2 }}
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-snow-500 px-1">
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-0.5 bg-ice-400 inline-block" /> Temp
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-0.5 bg-snow-400 inline-block border-dashed border-t border-snow-400" style={{ borderStyle: "dashed" }} /> Feels like
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: "rgba(56,232,255,0.4)" }} /> Snow
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-0.5 bg-snow-400 inline-block" /> Wind
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-0.5 bg-amber-400 inline-block" style={{ borderStyle: "dashed" }} /> Gusts
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 h-0.5 bg-blue-400 inline-block" style={{ borderStyle: "dashed" }} /> 32°F
+          </span>
+        </div>
+      </div>
+
+      {/* Mobile layout */}
+      <div className="lg:hidden">
+        <MobileTimelineView rows={rows} chartData={chartData} nowIndex={nowIndex} tempMin={tempMin} tempMax={tempMax} snowMax={snowMax} cumSnowMax={cumSnowMax} windCeil={windCeil} />
+      </div>
+
+      <div className="mt-3 text-xs text-snow-500">
+        Updated {new Date(fetchedAt).toLocaleTimeString()}
+      </div>
+    </>
+  );
+}
+
+// ─── Time Conditions Column ───────────────────────────────────────
+
+function TimeConditionsColumn({
+  rows,
+  hoveredIndex,
+  onHover,
+}: {
+  rows: TimelineRow[];
+  hoveredIndex: number | null;
+  onHover: (i: number | null) => void;
+}) {
+  return (
+    <div>
+      {/* Header spacer to match chart header */}
+      <div className="sticky top-0 z-10 bg-snow-800/95 backdrop-blur-sm border-b border-snow-700/50 px-2 py-1">
+        <span className="text-xs font-medium text-snow-400">Time</span>
+      </div>
+      {rows.map((row) => (
+        <div key={row.index}>
+          {/* Day boundary divider */}
+          {row.isDayBoundary && (
+            <div className="px-2 py-1 bg-snow-900/80 border-y border-snow-700/50">
+              <span className="text-[10px] font-medium text-ice-400/80 uppercase tracking-wide">
+                {row.dayLabel}
+              </span>
+            </div>
+          )}
+          <div
+            className={`flex items-center gap-1.5 px-2 transition-colors ${
+              row.isNight ? "bg-snow-900/40" : ""
+            } ${hoveredIndex === row.index ? "bg-ice-500/10" : ""} ${
+              row.isNow ? "border-l-2 border-ice-400" : ""
+            }`}
+            style={{ height: ROW_HEIGHT }}
+            onMouseEnter={() => onHover(row.index)}
+            onMouseLeave={() => onHover(null)}
+          >
+            <span
+              className={`text-xs font-mono w-10 ${
+                row.isNow ? "text-ice-400 font-bold" : "text-snow-400"
+              }`}
+            >
+              {row.label}
+            </span>
+            <div className="w-5 h-5 flex-shrink-0">
+              <WeatherIcon conditions={row.conditions} size="sm" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Custom Tooltip ───────────────────────────────────────────────
+
+function CustomTimelineTooltip({
+  active,
+  label,
+  rows,
+}: {
+  active?: boolean;
+  label?: number;
+  payload?: unknown[];
+  rows: TimelineRow[];
+}) {
+  if (!active || label == null) return null;
+
+  const row = rows[label];
+  if (!row) return null;
+
+  return (
+    <div className="bg-snow-900/95 backdrop-blur-sm border border-snow-600 rounded-lg px-3 py-2 shadow-xl text-xs min-w-[180px]">
+      <div className="flex items-center gap-2 mb-1.5">
+        <WeatherIcon conditions={row.conditions} size="sm" />
+        <div>
+          <div className="text-snow-200 font-medium">{row.label}</div>
+          <div className="text-snow-500 capitalize">{row.conditions}</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-snow-300">
+        <span>Temp</span>
+        <span className="text-ice-300 font-medium">{row.tempF != null ? `${Math.round(row.tempF)}°F` : "--"}</span>
+        <span>Feels Like</span>
+        <span className="text-snow-400">{row.feelsLikeF != null ? `${Math.round(row.feelsLikeF)}°F` : "--"}</span>
+        <span>Snow</span>
+        <span className="text-ice-300">
+          {row.snowInches > 0 ? `${row.snowInches.toFixed(1)}"` : "--"}
+        </span>
+        <span>Accumulation</span>
+        <span className="text-ice-200">{row.cumulativeSnow > 0 ? `${row.cumulativeSnow.toFixed(1)}"` : "--"}</span>
+        <span>Wind</span>
+        <span>{row.windMph != null ? `${Math.round(row.windMph)} mph` : "--"}</span>
+        <span>Gusts</span>
+        <span className="text-amber-400">{row.gustMph != null ? `${Math.round(row.gustMph)} mph` : "--"}</span>
+        {row.humidityPct != null && (
+          <>
+            <span>Humidity</span>
+            <span>{row.humidityPct}%</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Mobile Timeline View ─────────────────────────────────────────
+
+type MobileDataType = "temp" | "snow" | "wind";
+
+function MobileTimelineView({
+  rows,
+  chartData,
+  nowIndex,
+  tempMin,
+  tempMax,
+  snowMax,
+  cumSnowMax,
+  windCeil,
+}: {
+  rows: TimelineRow[];
+  chartData: Record<string, unknown>[];
+  nowIndex: number;
+  tempMin: number;
+  tempMax: number;
+  snowMax: number;
+  cumSnowMax: number;
+  windCeil: number;
+}) {
+  const [activeType, setActiveType] = useState<MobileDataType>("temp");
+  const totalHeight = Math.max(rows.length * ROW_HEIGHT, 300);
+
+  const toggleBtns: { key: MobileDataType; label: string }[] = [
+    { key: "temp", label: "Temp" },
+    { key: "snow", label: "Snow" },
+    { key: "wind", label: "Wind" },
+  ];
+
+  return (
+    <div>
+      {/* Toggle buttons */}
+      <div className="flex gap-1 mb-3">
+        {toggleBtns.map((btn) => (
+          <button
+            key={btn.key}
+            onClick={() => setActiveType(btn.key)}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              activeType === btn.key
+                ? "bg-ice-500/20 text-ice-400 border border-ice-500/30"
+                : "bg-snow-900/50 text-snow-400 border border-snow-700 hover:text-snow-200"
+            }`}
+          >
+            {btn.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Combined time + chart view */}
+      <div className="overflow-y-auto scrollbar-hide rounded-lg border border-snow-700" style={{ maxHeight: 420 }}>
+        <div className="flex">
+          {/* Time labels */}
+          <div className="w-[72px] flex-shrink-0 border-r border-snow-700/50">
+            {rows.map((row) => (
+              <div key={row.index}>
+                {row.isDayBoundary && (
+                  <div className="px-1.5 py-0.5 bg-snow-900/80 border-y border-snow-700/50">
+                    <span className="text-[9px] font-medium text-ice-400/80 uppercase tracking-wide">
+                      {row.time.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={`flex items-center gap-1 px-1.5 ${
+                    row.isNight ? "bg-snow-900/40" : ""
+                  } ${row.isNow ? "border-l-2 border-ice-400" : ""}`}
+                  style={{ height: ROW_HEIGHT }}
+                >
+                  <span className={`text-[10px] font-mono ${row.isNow ? "text-ice-400 font-bold" : "text-snow-400"}`}>
+                    {row.label}
+                  </span>
+                  <div className="w-4 h-4 flex-shrink-0">
+                    <WeatherIcon conditions={row.conditions} size="sm" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Chart area */}
+          <div className="flex-1 min-w-0">
+            <div style={{ height: totalHeight }}>
+              <ResponsiveContainer width="100%" height={totalHeight}>
+                {activeType === "temp" ? (
+                  <AreaChart data={chartData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="mTempGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#38e8ff" stopOpacity={0.05} />
+                        <stop offset="100%" stopColor="#38e8ff" stopOpacity={0.3} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.3} horizontal={false} />
+                    <XAxis type="number" domain={[tempMin, tempMax]} hide />
+                    <YAxis type="category" dataKey="index" hide />
+                    <ReferenceLine x={32} stroke="#60a5fa" strokeDasharray="4 4" strokeOpacity={0.5} />
+                    {nowIndex >= 0 && <ReferenceLine y={nowIndex} stroke="#38e8ff" strokeWidth={2} />}
+                    <Tooltip content={<MobileTooltip rows={rows} dataType="temp" />} />
+                    <Area type="monotone" dataKey="tempF" stroke="#38e8ff" strokeWidth={2} fill="url(#mTempGrad)" dot={false} isAnimationActive={false} />
+                    <Area type="monotone" dataKey="feelsLikeF" stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" fill="none" dot={false} isAnimationActive={false} />
+                  </AreaChart>
+                ) : activeType === "snow" ? (
+                  <ComposedChart data={chartData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="mSnowGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#38e8ff" stopOpacity={0.2} />
+                        <stop offset="100%" stopColor="#38e8ff" stopOpacity={0.7} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.3} horizontal={false} />
+                    <XAxis type="number" domain={[0, snowMax]} hide />
+                    <XAxis type="number" xAxisId="cumulative" domain={[0, cumSnowMax]} hide />
+                    <YAxis type="category" dataKey="index" hide />
+                    {nowIndex >= 0 && <ReferenceLine y={nowIndex} stroke="#38e8ff" strokeWidth={2} />}
+                    <Bar dataKey="snowInches" fill="url(#mSnowGrad)" radius={[0, 3, 3, 0]} barSize={Math.min(ROW_HEIGHT - 8, 18)} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="cumulativeSnow" xAxisId="cumulative" stroke="#7df2ff" strokeWidth={1.5} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
+                  </ComposedChart>
+                ) : (
+                  <AreaChart data={chartData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="mWindGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#94a3b8" stopOpacity={0.05} />
+                        <stop offset="40%" stopColor="#94a3b8" stopOpacity={0.15} />
+                        <stop offset="70%" stopColor="#f59e0b" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="#ef4444" stopOpacity={0.35} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.3} horizontal={false} />
+                    <XAxis type="number" domain={[0, windCeil]} hide />
+                    <YAxis type="category" dataKey="index" hide />
+                    {nowIndex >= 0 && <ReferenceLine y={nowIndex} stroke="#38e8ff" strokeWidth={2} />}
+                    <Tooltip content={<MobileTooltip rows={rows} dataType="wind" />} />
+                    <Area type="monotone" dataKey="windMph" stroke="#94a3b8" strokeWidth={1.5} fill="url(#mWindGrad)" dot={false} isAnimationActive={false} />
+                    <Area type="monotone" dataKey="gustMph" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 3" fill="none" dot={false} isAnimationActive={false} />
+                  </AreaChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileTooltip({
+  active,
+  label,
+  rows,
+  dataType,
+}: {
+  active?: boolean;
+  label?: number;
+  payload?: unknown[];
+  rows: TimelineRow[];
+  dataType: MobileDataType;
+}) {
+  if (!active || label == null) return null;
+  const row = rows[label];
+  if (!row) return null;
+
+  return (
+    <div className="bg-snow-900/95 backdrop-blur-sm border border-snow-600 rounded-lg px-2.5 py-1.5 shadow-xl text-xs">
+      <div className="text-snow-300 font-medium mb-0.5">{row.label}</div>
+      {dataType === "temp" && (
+        <div className="text-ice-300">
+          {row.tempF != null ? `${Math.round(row.tempF)}°F` : "--"}
+          {row.feelsLikeF != null && (
+            <span className="text-snow-500 ml-1">(feels {Math.round(row.feelsLikeF)}°)</span>
+          )}
+        </div>
+      )}
+      {dataType === "snow" && (
+        <div className="text-ice-300">
+          {row.snowInches > 0 ? `${row.snowInches.toFixed(1)}"` : "No snow"}
+          {row.cumulativeSnow > 0 && (
+            <span className="text-snow-400 ml-1">({row.cumulativeSnow.toFixed(1)}&quot; total)</span>
+          )}
+        </div>
+      )}
+      {dataType === "wind" && (
+        <div className="text-snow-300">
+          {row.windMph != null ? `${Math.round(row.windMph)} mph` : "--"}
+          {row.gustMph != null && (
+            <span className="text-amber-400 ml-1">(gusts {Math.round(row.gustMph)})</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────
+
+function getNightRegions(rows: TimelineRow[]): { start: number; end: number }[] {
+  const regions: { start: number; end: number }[] = [];
+  let regionStart: number | null = null;
+
+  for (const row of rows) {
+    if (row.isNight && regionStart === null) {
+      regionStart = row.index;
+    } else if (!row.isNight && regionStart !== null) {
+      regions.push({ start: regionStart, end: row.index - 1 });
+      regionStart = null;
+    }
+  }
+  if (regionStart !== null) {
+    regions.push({ start: regionStart, end: rows.length - 1 });
+  }
+  return regions;
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────
 
 function LoadingSkeleton() {
   return (
@@ -319,80 +1096,12 @@ function LoadingSkeleton() {
   );
 }
 
-function MultiModelHourlyView({
-  forecasts,
-  fetchedAt,
-}: {
-  forecasts: HourlyDataPoint[];
-  fetchedAt: string;
-}) {
-  if (forecasts.length === 0) {
-    return <p className="text-snow-400 text-center py-4">No hourly forecast data available</p>;
-  }
+// ─── Icons ────────────────────────────────────────────────────────
 
-  return (
-    <>
-      <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-2">
-        {forecasts.map((point, i) => {
-          const time = new Date(point.time);
-          const temp = point.tempF != null ? Math.round(point.tempF) : "--";
-          const snow = point.snowInches != null ? point.snowInches.toFixed(1) : "0";
-          const wind = point.windMph != null ? Math.round(point.windMph) : "--";
-          const conditions = point.conditions || "Unknown";
-
-          return (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-2 rounded-lg bg-snow-900/30 hover:bg-snow-900/50 transition-colors"
-            >
-              <div className="w-16 text-sm text-snow-400">
-                {time.toLocaleTimeString([], { hour: "numeric", hour12: true })}
-              </div>
-              <div className="w-10 h-10 flex items-center justify-center">
-                <WeatherIcon conditions={conditions} size="md" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-lg font-semibold text-ice-300">{temp}°F</span>
-                  {parseFloat(snow) > 0 && (
-                    <span className="text-sm text-ice-400 flex items-center gap-1">
-                      <SnowflakeIcon className="w-3 h-3" />
-                      {snow}&quot;
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-snow-400 flex items-center gap-2">
-                  <span>{conditions}</span>
-                  <span className="flex items-center gap-1">
-                    <WindIcon className="w-3 h-3" />
-                    {wind} mph
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-3 text-xs text-snow-500">
-        Updated {new Date(fetchedAt).toLocaleTimeString()}
-      </div>
-    </>
-  );
-}
-
-// Icons
 function SnowflakeIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="currentColor" viewBox="0 0 24 24">
       <path d="M12 2v4m0 12v4m-6.93-5.07l2.83-2.83m8.2-8.2l2.83-2.83M2 12h4m12 0h4M5.07 5.07l2.83 2.83m8.2 8.2l2.83 2.83M12 8a4 4 0 100 8 4 4 0 000-8z" />
-    </svg>
-  );
-}
-
-function WindIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5a2 2 0 012 2m-2-2a2 2 0 00-2 2m2-2V3m0 4H3m15 4a2 2 0 012 2m-2-2a2 2 0 00-2 2m2-2h-5m5 2h2m-9 4a2 2 0 012 2m-2-2a2 2 0 00-2 2m2-2H3m5 2H6" />
     </svg>
   );
 }
@@ -417,7 +1126,6 @@ function WeatherIcon({ conditions, size = "md" }: { conditions: string; size?: "
   const lowerConditions = conditions.toLowerCase();
   const sizeClass = size === "sm" ? "w-6 h-6" : "w-8 h-8";
 
-  // Snow conditions
   if (lowerConditions.includes("snow") || lowerConditions.includes("blizzard")) {
     return (
       <svg className={`${sizeClass} text-ice-300`} fill="currentColor" viewBox="0 0 24 24">
@@ -426,7 +1134,6 @@ function WeatherIcon({ conditions, size = "md" }: { conditions: string; size?: "
     );
   }
 
-  // Rain
   if (lowerConditions.includes("rain") || lowerConditions.includes("drizzle") || lowerConditions.includes("shower")) {
     return (
       <svg className={`${sizeClass} text-blue-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -435,7 +1142,6 @@ function WeatherIcon({ conditions, size = "md" }: { conditions: string; size?: "
     );
   }
 
-  // Cloudy
   if (lowerConditions.includes("cloud") || lowerConditions.includes("overcast")) {
     return (
       <svg className={`${sizeClass} text-snow-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -444,7 +1150,6 @@ function WeatherIcon({ conditions, size = "md" }: { conditions: string; size?: "
     );
   }
 
-  // Clear/Sunny
   if (lowerConditions.includes("clear") || lowerConditions.includes("sunny") || lowerConditions.includes("fair")) {
     return (
       <svg className={`${sizeClass} text-yellow-400`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -453,7 +1158,6 @@ function WeatherIcon({ conditions, size = "md" }: { conditions: string; size?: "
     );
   }
 
-  // Fog
   if (lowerConditions.includes("fog") || lowerConditions.includes("mist") || lowerConditions.includes("haze")) {
     return (
       <svg className={`${sizeClass} text-snow-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -462,7 +1166,6 @@ function WeatherIcon({ conditions, size = "md" }: { conditions: string; size?: "
     );
   }
 
-  // Default - partly cloudy
   return (
     <svg className={`${sizeClass} text-snow-300`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
